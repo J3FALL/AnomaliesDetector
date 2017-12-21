@@ -37,8 +37,6 @@ def slice_uv_squares(input_dir):
     amount = len(os.listdir(input_dir))
 
     square_size = 100
-    u = []
-    v = []
 
     output_dir = "samples/out/"
     if not os.path.exists(output_dir):
@@ -50,18 +48,14 @@ def slice_uv_squares(input_dir):
         squares_amount = 44
         for x in range(0, 1100, square_size):
             for y in range(0, 400, square_size):
-                square = image.extract_square('u', x, y, square_size)
-                square_name = generate_square_name(file_name, 'u', x, y)
+                square = image.extract_square('vomecrty', x, y, square_size)
+                square_name = generate_square_name(file_name, 'vomecrty', x, y)
                 save_square_to_file(square, output_dir + square_name)
-                u.append(square)
-                square = image.extract_square('v', x, y, square_size)
-                square_name = generate_square_name(file_name, 'v', x, y)
+                square = image.extract_square('vozocrtx', x, y, square_size)
+                square_name = generate_square_name(file_name, 'vozocrtx', x, y)
                 save_square_to_file(square, output_dir + square_name)
-                v.append(square)
                 print("squares: " + str(square_index) + "/" + str(squares_amount) + " done")
                 square_index += 1
         # TODO: improve logging
         print("image: " + str(index) + "/" + str(amount) + " done")
         index += 1
-
-    return u, v
