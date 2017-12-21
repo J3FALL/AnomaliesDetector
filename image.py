@@ -26,7 +26,6 @@ class NCImage:
 image = NCImage("samples/uv_sample_with_outliers.nc")
 
 square = image.extract_square('vozocrtx', 0, 0, 50, 0, 0)
-save_square_to_file(square, 'test')
+save_square_to_file(square, 'samples/test')
 
-test = load_square_from_file('test')
-
+test = load_square_from_file('samples/test')
