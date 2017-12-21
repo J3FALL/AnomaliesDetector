@@ -64,12 +64,4 @@ def slice_uv_squares(input_dir):
         print("image: " + str(index) + "/" + str(amount) + " done")
         index += 1
 
-    return [u, v]
-
-slice_uv_squares("samples/data/")
-# image = NCImage("samples/uv_sample_with_outliers.nc")
-
-# square = image.extract_square('vozocrtx', 0, 0, 50, 0, 0)
-# save_square_to_file(square, 'samples/test')
-
-# test = load_square_from_file('samples/test')
+    return u, v
