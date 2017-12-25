@@ -27,8 +27,13 @@ def show_velocity_square(vel):
     plt.show()
 
 
-image = img.NCImage("samples/data/rea0.nc")
-u = image.extract_variable('u')
+def generate_squares_global():
+    img.slice_uv_squares("samples/data/")
+
+
+#image = img.NCImage("samples/data/rea0.nc")
+
+generate_squares_global()
 '''
 # img.slice_uv_squares("samples/data/")
 img.slice_uv_squares("samples/test/")

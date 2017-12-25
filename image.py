@@ -51,7 +51,7 @@ def generate_square_name(file_name, var, x, y):
     return '_'.join((file_name.split('.')[0], var, str(x), str(y)))
 
 
-def slice_uv_squares(input_dir):
+def slice_uv_squares(input_dir, mode = "arctic"):
     index = 1
     amount = len(os.listdir(input_dir))
 
@@ -61,17 +61,26 @@ def slice_uv_squares(input_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    u_name = ""
+    v_name = ""
+    if mode == "global":
+        u_name = 'vozocrtx'
+        v_name = 'vomecrty'
+    elif mode == "arctic":
+        u_name = "u"
+        v_name = "v"
+
     for file_name in os.listdir(input_dir):
         image = NCImage(input_dir + file_name)
         square_index = 1
         squares_amount = 44
         for x in range(0, 1100, square_size):
             for y in range(0, 400, square_size):
-                square = image.extract_square('vomecrty', x, y, square_size)
-                square_name = generate_square_name(file_name, 'vomecrty', x, y)
+                square = image.extract_square(v_name, x, y, square_size)
+                square_name = generate_square_name(file_name, v_name, x, y)
                 save_square_to_file(square, output_dir + square_name)
-                square = image.extract_square('vozocrtx', x, y, square_size)
-                square_name = generate_square_name(file_name, 'vozocrtx', x, y)
+                square = image.extract_square(u_name, x, y, square_size)
+                square_name = generate_square_name(file_name, u_name, x, y)
                 save_square_to_file(square, output_dir + square_name)
                 print("squares: " + str(square_index) + "/" + str(squares_amount) + " done")
                 square_index += 1
