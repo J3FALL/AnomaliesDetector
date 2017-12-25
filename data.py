@@ -27,6 +27,9 @@ def show_velocity_square(vel):
     plt.show()
 
 
+image = img.NCImage("samples/data/rea0.nc")
+u = image.extract_variable('u')
+'''
 # img.slice_uv_squares("samples/data/")
 img.slice_uv_squares("samples/test/")
 # TODO: average by depth
@@ -44,4 +47,4 @@ for image_index in range(0, 1):
 
             show_velocity_square(vel)
 
-
+'''

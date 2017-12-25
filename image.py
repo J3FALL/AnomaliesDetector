@@ -18,8 +18,27 @@ class NCImage:
         self.file_name = file_name
         self.dataset = Dataset(filename=file_name, mode='r')
 
-    def extract_variable(self, var):
-        return np.array(self.dataset.variables[var])
+    def extract_variable(self, var_name):
+        var = np.array(self.dataset.variables[var_name])
+        var = self.convert_var_if_global(var)
+        return var
+
+    def convert_var_if_global(self, var):
+        depths = self.dataset.dimensions['depth']
+
+        if len(depths) == 75:
+            depth_per_level = [6, 5, 4, 5, 5, 5, 6, 4, 4, 4, 3, 4, 2, 3, 3, 3, 2, 7]
+            depth_converted = []
+            for level in range(0, len(depth_per_level)):
+                depth_converted.extend([level] * depth_per_level[level])
+
+            for depth in range(75):
+                var[0, depth_converted[depth], :, :] += 1 / depth_per_level[depth_converted[depth]] * var[0, depth, :, :]
+
+            result = var[:, 0:18, :, :]
+            return result
+        else:
+            return var
 
     def extract_square(self, var_name, x_offset, y_offset, size, depth=0, time=0):
         return self.extract_variable(var_name)[time, depth, x_offset:x_offset + size, y_offset:y_offset + size]
