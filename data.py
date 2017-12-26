@@ -1,8 +1,10 @@
+import csv
 from math import pow
 from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 import image as img
 
@@ -31,9 +33,44 @@ def generate_squares_global():
     img.slice_uv_squares("samples/data/")
 
 
-#image = img.NCImage("samples/data/rea0.nc")
+def label_good_samples():
+    file_name = "samples/good_samples.csv"
+    with open(file_name, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile, delimiter=',',
+                           quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(['file, label'])
 
-generate_squares_global()
+        images_amount = 30
+        vel_dir = "samples/good/"
+        if not os.path.exists(vel_dir):
+            os.makedirs(vel_dir)
+
+        for image_index in range(0, images_amount):
+            square_index = 1
+            for x in range(0, 1100, 100):
+                for y in range(0, 400, 100):
+                    u_file_name = "samples/out/rea" + str(image_index) + "_u_" + str(x) + "_" + str(y)
+                    v_file_name = "samples/out/rea" + str(image_index) + "_v_" + str(x) + "_" + str(y)
+                    u = img.load_square_from_file(u_file_name)
+                    v = img.load_square_from_file(v_file_name)
+                    # remove nan-values
+                    u[u < -30000.0] = 0.0
+                    v[v < -30000.0] = 0.0
+                    vel = calculate_velocity_magnitude_matrix(u, v)
+                    velocity_file_name = vel_dir + "rea" + str(image_index) + "_" + str(x) + "_" + str(y)
+                    img.save_square_to_file(vel, velocity_file_name)
+
+                    writer.writerow([velocity_file_name, '0'])
+                    print("squares: " + str(square_index) + "/44 done")
+                    square_index += 1
+            print("images: " + str(image_index + 1) + "/" + str(images_amount) + " done")
+
+
+#generate_squares_global()
+#label_good_samples()
+
+square = img.load_square_from_file("samples/out/rea0_u_500_0")
+print(square)
 '''
 # img.slice_uv_squares("samples/data/")
 img.slice_uv_squares("samples/test/")
