@@ -1,10 +1,10 @@
 import csv
+import os
 from math import pow
 from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 
 import image as img
 
@@ -23,7 +23,18 @@ def calculate_velocity_magnitude_matrix(x, y):
     return mgn
 
 
+def press(event):
+    if event.key == 'y':
+        bad_samples.append('1')
+        plt.close()
+
+    elif event.key == 'n':
+        bad_samples.append('0')
+        plt.close()
+
+
 def show_velocity_square(vel):
+    plt.connect('key_press_event', press)
     plt.imshow(vel)
     plt.colorbar()
     plt.show()
@@ -37,7 +48,7 @@ def label_good_samples():
     file_name = "samples/good_samples.csv"
     with open(file_name, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=',',
-                           quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(['file, label'])
 
         images_amount = 30
@@ -66,27 +77,62 @@ def label_good_samples():
             print("images: " + str(image_index + 1) + "/" + str(images_amount) + " done")
 
 
-#generate_squares_global()
-#label_good_samples()
+bad_samples = []
 
-square = img.load_square_from_file("samples/out/rea0_u_500_0")
-print(square)
-'''
+
+def label_bad_samples():
+    file_name = "samples/bad_samples.csv"
+    with open(file_name, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(['file, label'])
+
+        vel_dir = "samples/bad/vel/"
+        if not os.path.exists(vel_dir):
+            os.makedirs(vel_dir)
+
+        for file_name in os.listdir("samples/arctic"):
+            arctic_file = file_name.split(".")[0]
+            for x in range(0, 1100, 100):
+                for y in range(0, 400, 100):
+                    u_file_name = "samples/bad/" + arctic_file + "_vozocrtx_" + str(x) + "_" + str(y)
+                    v_file_name = "samples/bad/" + arctic_file + "_vomecrty_" + str(x) + "_" + str(y)
+                    u = img.load_square_from_file(u_file_name)
+                    v = img.load_square_from_file(v_file_name)
+                    u[u < -30000.0] = 0.0
+                    v[v < -30000.0] = 0.0
+                    vel = calculate_velocity_magnitude_matrix(u, v)
+
+                    show_velocity_square(vel)
+
+                    velocity_file_name = vel_dir + arctic_file + "_" + str(x) + "_" + str(y)
+                    img.save_square_to_file(vel, velocity_file_name)
+                    result = bad_samples[len(bad_samples) - 1]
+                    writer.writerow([velocity_file_name, result])
+
+
+label_bad_samples()
+# generate_squares_global()
+# label_good_samples()
+
+
 # img.slice_uv_squares("samples/data/")
-img.slice_uv_squares("samples/test/")
-# TODO: average by depth
+# img.slice_uv_squares("samples/arctic/")
 
+# img.slice_uv_squares("samples/arctic/", "samples/bad/", mode="arctic")
+
+'''
 for image_index in range(0, 1):
     for x in range(0, 1100, 100):
         for y in range(0, 400, 100):
-            u_file_name = "samples/out/ARCTIC_1h_UV_grid_UV_20121017-20121017" + "_vomecrty_" + str(x) + "_" + str(y)
-            v_file_name = "samples/out/ARCTIC_1h_UV_grid_UV_20121017-20121017" + "_vozocrtx_" + str(x) + "_" + str(y)
+            u_file_name = "samples/out/rea0" + "_u_" + str(x) + "_" + str(y)
+            v_file_name = "samples/out/rea0" + "_v_" + str(x) + "_" + str(y)
             u = img.load_square_from_file(u_file_name)
             v = img.load_square_from_file(v_file_name)
-            u[u == -32767.0] = 0.0
-            v[v == -32767.0] = 0.0
+            u[u < -30000.0] = 0.0
+            v[v < -30000.0] = 0.0
             vel = calculate_velocity_magnitude_matrix(u, v)
 
             show_velocity_square(vel)
+
 
 '''

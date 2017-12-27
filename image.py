@@ -24,7 +24,8 @@ class NCImage:
         return var
 
     def convert_var_if_global(self, var):
-        depths = self.dataset.dimensions['depth']
+        #TODO: depthv, depth
+        depths = self.dataset.dimensions['depthv']
 
         if len(depths) == 75:
             depth_per_level = [6, 5, 4, 5, 5, 5, 6, 4, 4, 4, 3, 4, 2, 3, 3, 3, 2, 7]
@@ -51,24 +52,25 @@ def generate_square_name(file_name, var, x, y):
     return '_'.join((file_name.split('.')[0], var, str(x), str(y)))
 
 
-def slice_uv_squares(input_dir, mode="arctic"):
+def slice_uv_squares(input_dir, output_dir, mode="arctic"):
     index = 1
     amount = len(os.listdir(input_dir))
 
     square_size = 100
 
-    output_dir = "samples/out/"
+    #output_dir = "samples/out/"
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     u_name = ""
     v_name = ""
     if mode == "global":
+        u_name = 'u'
+        v_name = 'v'
+    elif mode == "arctic":
         u_name = 'vozocrtx'
         v_name = 'vomecrty'
-    elif mode == "arctic":
-        u_name = "u"
-        v_name = "v"
 
     for file_name in os.listdir(input_dir):
         image = NCImage(input_dir + file_name)
