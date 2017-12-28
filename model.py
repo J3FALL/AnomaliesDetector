@@ -47,7 +47,7 @@ def split_data():
 
 def generate_train_data(samples):
     while 1:
-        batch_size = int(len(samples) / 5)
+        batch_size = int(len(samples) / 10)
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, 100, 100, 1), dtype=np.float32)
             y = np.zeros((batch_size, 2))
@@ -55,9 +55,9 @@ def generate_train_data(samples):
                 file_name = samples[index][0]
                 square = image.load_square_from_file(file_name)
                 expanded = np.expand_dims(square, axis=2)
-                x[index] = expanded
-                y[index] = samples[index][1]
-                yield (x, y)
+                x[index - sample_index] = expanded
+                y[index - sample_index] = samples[index][1]
+            yield (x, y)
 
 
 def generate_test_data(samples):
@@ -70,8 +70,8 @@ def generate_test_data(samples):
                 file_name = samples[index][0]
                 square = image.load_square_from_file(file_name)
                 expanded = np.expand_dims(square, axis=2)
-                x[index] = expanded
-                y[index] = samples[index][1]
+                x[index - sample_index] = expanded
+                y[index - sample_index] = samples[index][1]
                 yield (x, y)
 
 
@@ -102,9 +102,9 @@ class AccuracyHistory(keras.callbacks.Callback):
 
 
 history = AccuracyHistory()
-train_batch_size = int(len(train) / 5)
+train_batch_size = int(len(train) / 10)
 test_batch_size = int(len(test) / 5)
-epochs = 5
+epochs = 10
 
 model.fit_generator(generate_train_data(train),
                     samples_per_epoch=train_batch_size,
@@ -116,7 +116,7 @@ model.fit_generator(generate_train_data(train),
 model.save("model.h5")
 
 score = model.evaluate_generator(generate_test_data(test), workers=4)
-plt.plot(range(1, 5), history.acc)
+plt.plot(range(1, 10), history.acc)
 plt.xlabel('Epochs')
 plt.ylabel('Accuracy')
 plt.show()
