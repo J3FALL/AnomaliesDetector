@@ -47,7 +47,7 @@ def split_data():
 
 def generate_train_data(samples):
     while 1:
-        batch_size = int(len(samples) / 10)
+        batch_size = int(len(samples) / 11)
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, 100, 100, 1), dtype=np.float32)
             y = np.zeros((batch_size, 2))
@@ -72,7 +72,7 @@ def generate_test_data(samples):
                 expanded = np.expand_dims(square, axis=2)
                 x[index - sample_index] = expanded
                 y[index - sample_index] = samples[index][1]
-                yield (x, y)
+            yield (x, y)
 
 
 train, test = split_data()
@@ -101,8 +101,10 @@ class AccuracyHistory(keras.callbacks.Callback):
         self.acc.append(logs.get('acc'))
 
 
+print(len(train))
+print(len(test))
 history = AccuracyHistory()
-train_batch_size = int(len(train) / 10)
+train_batch_size = int(len(train) / 11)
 test_batch_size = int(len(test) / 5)
 epochs = 10
 
