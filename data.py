@@ -110,7 +110,41 @@ def label_bad_samples():
                     writer.writerow([velocity_file_name, result])
 
 
-label_bad_samples()
+def add_characteristics_of_samples(dataset_file_name):
+    rows = []
+    with open(dataset_file_name, 'r', newline='') as old_csv_file:
+        reader = csv.reader(old_csv_file, delimiter=',')
+        for row in reader:
+            rows.append(row)
+
+    # Add min && max values of samples
+    for row in rows:
+        square = img.load_square_from_file(row[0])
+        row.append(np.min(square))
+        row.append(np.max(square))
+
+    with open(dataset_file_name, 'w', newline='') as new_csv_file:
+        writer = csv.writer(new_csv_file, delimiter=',')
+        for row in rows:
+            writer.writerow(row)
+
+
+def get_min_max_of_dataset(dataset_file_name):
+    min_vel = 1000.0
+    max_vel = -1000.0
+    with open(dataset_file_name, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            square = img.load_square_from_file(row[0])
+            min_vel = min([min_vel, np.min(square)])
+            max_vel = max([max_vel, np.max(square)])
+
+    return min_vel, max_vel
+
+
+add_characteristics_of_samples("samples/bad_samples.csv")
+print(get_min_max_of_dataset("samples/bad_samples.csv"))
+# label_bad_samples()
 # generate_squares_global()
 # label_good_samples()
 
