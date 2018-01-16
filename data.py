@@ -117,12 +117,12 @@ def add_characteristics_of_samples(dataset_file_name):
         for row in reader:
             rows.append(row)
 
-    # Add min && max values of samples
+    # Add min && max && average values of samples
     for row in rows:
         square = img.load_square_from_file(row[0])
         row.append(np.min(square))
         row.append(np.max(square))
-
+        row.append(np.average(square))
     with open(dataset_file_name, 'w', newline='') as new_csv_file:
         writer = csv.writer(new_csv_file, delimiter=',')
         for row in rows:
@@ -142,11 +142,40 @@ def get_min_max_of_dataset(dataset_file_name):
     return min_vel, max_vel
 
 
-add_characteristics_of_samples("samples/bad_samples.csv")
-print(get_min_max_of_dataset("samples/bad_samples.csv"))
-# label_bad_samples()
-# generate_squares_global()
-# label_good_samples()
+def show_hist_samples_distribution(dataset_file_name):
+    plt.style.use('seaborn-white')
+
+    average_vel = []
+    min_vel = []
+    max_vel = []
+    with open(dataset_file_name, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            min_vel.append(np.float(row[2]))
+            max_vel.append(np.float(row[3]))
+            average_vel.append(np.float(row[4]))
+
+    bins = np.linspace(min(average_vel), max(average_vel), num=500)
+    counts = np.zeros_like(bins)
+    i = np.searchsorted(bins, average_vel)
+    np.add.at(counts, i, 1)
+
+    plt.title("Average velocity distribution")
+    plt.hist(average_vel, bins, histtype='stepfilled', normed=True)
+    plt.show()
+
+
+def extend_datasets():
+    add_characteristics_of_samples("samples/good_samples.csv")
+    add_characteristics_of_samples("samples/bad_samples.csv")
+    add_characteristics_of_samples("samples/rest_bad_samples.csv")
+    add_characteristics_of_samples("samples/valid_samples.csv")
+
+
+#extend_datasets()
+show_hist_samples_distribution("samples/good_samples.csv")
+show_hist_samples_distribution("samples/bad_samples.csv")
+show_hist_samples_distribution("samples/valid_samples.csv")
 
 
 # img.slice_uv_squares("samples/data/")
