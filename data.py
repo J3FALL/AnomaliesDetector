@@ -211,7 +211,21 @@ def show_average_vel_by_squares(dataset_file_name):
             plt.show()
 
 
-show_average_vel_by_squares("samples/bad_samples.csv")
+def show_distribution_by_classes(dataset_file_name):
+    with open(dataset_file_name, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        classes = {}
+        for row in reader:
+            label = int(row[1])
+            if label in classes:
+                classes[label] += 1
+            else:
+                classes[label] = 0
+        print(classes)
+
+
+show_distribution_by_classes("samples/bad_samples.csv")
+# show_average_vel_by_squares("samples/bad_samples.csv")
 # print(show_average_vel_by_squares("samples/bad_samples.csv"))
 # print(extract_square_index("samples/bad/vel/ARCTIC_1h_UV_grid_UV_20130101-20130101_0_0"))
 # extend_datasets()
