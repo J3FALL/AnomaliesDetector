@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 from math import pow
 from math import sqrt
 
@@ -172,11 +173,51 @@ def extend_datasets():
     add_characteristics_of_samples("samples/valid_samples.csv")
 
 
-#extend_datasets()
-show_hist_samples_distribution("samples/good_samples.csv")
-show_hist_samples_distribution("samples/bad_samples.csv")
-show_hist_samples_distribution("samples/valid_samples.csv")
+def extract_square_index(square_name):
+    try:
+        found = re.search('_\d*_\d*', square_name).group(0)[1:]
+    except AttributeError:
+        found = ''
 
+    return found
+
+
+def group_squares(reader):
+    groups, dic_name = [], {}
+    for row in reader:
+        square_index = extract_square_index(row[0])
+        if square_index in dic_name:
+            groups[dic_name[square_index]].extend([row])
+        else:
+            groups.append([row])
+            dic_name[square_index] = len(dic_name)
+
+    return groups
+
+
+def show_average_vel_by_squares(dataset_file_name):
+    with open(dataset_file_name, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        groups = group_squares(reader)
+        for index in range(0, len(groups)):
+            squares_vel = np.zeros((len(groups[index]), 100, 100), dtype=float)
+            for sample_index in range(0, len(groups[index])):
+                square = img.load_square_from_file(groups[index][sample_index][0])
+                squares_vel[sample_index] = square
+            average_vel = np.average(squares_vel, axis=0)
+            print(average_vel)
+            plt.imshow(average_vel)
+            plt.colorbar()
+            plt.show()
+
+
+show_average_vel_by_squares("samples/bad_samples.csv")
+# print(show_average_vel_by_squares("samples/bad_samples.csv"))
+# print(extract_square_index("samples/bad/vel/ARCTIC_1h_UV_grid_UV_20130101-20130101_0_0"))
+# extend_datasets()
+# show_hist_samples_distribution("samples/good_samples.csv")
+# show_hist_samples_distribution("samples/bad_samples.csv")
+# show_hist_samples_distribution("samples/valid_samples.csv")
 
 # img.slice_uv_squares("samples/data/")
 # img.slice_uv_squares("samples/arctic/")
