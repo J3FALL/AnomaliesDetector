@@ -7,7 +7,7 @@ from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
 from keras.models import load_model
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, precision_recall_curve, auc
 
 import image
 
@@ -163,7 +163,7 @@ epochs = 10
 model = load_model("samples/model.h5")
 scores = model.predict_generator(generate_test_data(test), steps=25)
 print(scores)
-real = np.zeros((len(test), ), dtype=np.float32)
+real = np.zeros((len(test),), dtype=np.float32)
 for i in range(0, len(test)):
     real[i] = test[i][1]
 
@@ -188,15 +188,28 @@ def generate_results(y_test, y_score):
     fpr, tpr, _ = roc_curve(y_test, y_score)
     roc_auc = auc(fpr, tpr)
     plt.figure()
-    plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot(fpr, tpr)
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.05])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('Receiver operating characteristic curve')
-    plt.show()
+    plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
     print('AUC: %f' % roc_auc)
+
+    plt.show()
+
+    pr, rc, _ = precision_recall_curve(y_test, y_score)
+    pr_auc = auc(rc, pr)
+    plt.plot(pr, rc)
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.title('Precision-Recall curve with AUC(%0.2f)' % pr_auc)
+    plt.xlabel('Precision')
+    plt.ylabel('Recall')
+    print('AUC: %f' % pr_auc)
+
+    plt.show()
 
 
 generate_results(real, scores)
