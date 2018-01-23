@@ -1,12 +1,14 @@
 import csv
 
 import keras
+import matplotlib.pyplot as plt
 import numpy as np
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
-from keras.optimizers import SGD
-from keras.optimizers import Adam
+from keras.models import load_model
+from sklearn.metrics import roc_curve, auc
+
 import image
 
 
@@ -17,16 +19,16 @@ def read_samples(file_name):
         next(reader, None)
         for row in reader:
             row[1] = int(row[1])
-            square = image.load_square_from_file(row[0])
-            if square.max() == 0.0 and square.min() == 0.0:
+
+            if row[2] == 0.0 and row[3] == 0.0:
                 next(reader)
 
             samples.append(row)
 
-    for sample in samples:
-        label = np.zeros(2, dtype=np.int8)
-        label[sample[1]] = 1
-        sample[1] = label
+    # for sample in samples:
+    #     label = np.zeros(2, dtype=np.int8)
+    #     label[sample[1]] = 1
+    #     sample[1] = label
 
     a, b = divmod(len(samples), 50)
 
@@ -47,41 +49,43 @@ def split_data():
     train = bad_samples
     test = bad_samples
 
-    return train, test
+    return train
 
 
 def generate_train_data(samples):
     while 1:
+        # print(len(samples))
         batch_size = int(len(samples) / 50)
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, 100, 100, 1), dtype=np.float32)
-            y = np.zeros((batch_size, 2))
+            y = np.zeros((batch_size,))
             for index in range(sample_index, sample_index + batch_size):
-                file_name = samples[index][0]
+                try:
+                    file_name = samples[index][0]
+                except IndexError:
+                    print(index)
                 square = image.load_square_from_file(file_name)
-                rows_sum = square.sum(axis=1)
-                new_matrix = square / rows_sum[:, np.newaxis]
-                expanded = np.expand_dims(new_matrix, axis=2)
+                expanded = np.expand_dims(square, axis=2)
                 x[index - sample_index] = expanded
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
 
 
 def generate_test_data(samples):
-    while 1:
-        batch_size = int(len(samples) / 25)
-        for sample_index in range(0, len(samples), batch_size):
-            x = np.zeros((batch_size, 100, 100, 1), dtype=np.float32)
-            y = np.zeros((batch_size, 2))
-            for index in range(sample_index, sample_index + batch_size):
-                file_name = samples[index][0]
-                square = image.load_square_from_file(file_name)
-                rows_sum = square.sum(axis=1)
-                new_matrix = square / rows_sum[:, np.newaxis]
-                expanded = np.expand_dims(new_matrix, axis=2)
-                x[index - sample_index] = expanded
-                y[index - sample_index] = samples[index][1]
-            yield (x, y)
+    # while 1:
+    batch_size = int(len(samples) / 25)
+    for sample_index in range(0, len(samples), batch_size):
+        x = np.zeros((batch_size, 100, 100, 1), dtype=np.float32)
+        y = np.zeros((batch_size,))
+        for index in range(sample_index, sample_index + batch_size):
+            file_name = samples[index][0]
+            square = image.load_square_from_file(file_name)
+            # rows_sum = square.sum(axis=1)
+            # new_matrix = square / rows_sum[:, np.newaxis]
+            expanded = np.expand_dims(square, axis=2)
+            x[index - sample_index] = expanded
+            y[index - sample_index] = samples[index][1]
+        yield (x, y)
 
 
 def generate_test_outliers(samples):
@@ -93,16 +97,14 @@ def generate_test_outliers(samples):
             for index in range(sample_index, sample_index + batch_size):
                 file_name = samples[index][0]
                 square = image.load_square_from_file(file_name)
-                rows_sum = square.sum(axis=1)
-                new_matrix = square / rows_sum[:, np.newaxis]
-                expanded = np.expand_dims(new_matrix, axis=2)
+                expanded = np.expand_dims(square, axis=2)
                 x[index - sample_index] = expanded
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
 
 
 def get_validation_data():
-    valid_samples_file = "samples/rest_bad_samples.csv"
+    valid_samples_file = "samples/valid_samples.csv"
     samples = read_samples(valid_samples_file)
 
     return samples
@@ -113,17 +115,16 @@ def get_outliers_validation_data():
     samples = read_samples(file)
     result = []
     for sample in samples:
-        if sample[1][1] == 1:
+        if sample[1] == 1:
             result.append(sample)
 
     return result[0:240]
 
 
-train, test = split_data()
 input_shape = (100, 100, 1)
 model = Sequential()
 model.add(Conv2D(32, kernel_size=(5, 5), strides=(1, 1),
-                 activation='sigmoid',
+                 activation='relu',
                  input_shape=input_shape))
 model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 model.add(Conv2D(64, (5, 5), activation='relu'))
@@ -131,10 +132,10 @@ model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Flatten())
 model.add(Dense(1000, activation='relu'))
 model.add(Dropout(0.5))
-model.add(Dense(2, activation='sigmoid'))
+model.add(Dense(1, activation='sigmoid'))
 
-model.compile(loss="binary_crossentropy",
-              optimizer="rmsprop",
+model.compile(loss='binary_crossentropy',
+              optimizer=keras.optimizers.Adam(),
               metrics=['accuracy'])
 
 
@@ -146,30 +147,58 @@ class AccuracyHistory(keras.callbacks.Callback):
         self.acc.append(logs.get('acc'))
 
 
+train = split_data()
 test = get_validation_data()
-
-print(len(train))
-print(len(test))
-out = get_outliers_validation_data()
-print(len(out))
 history = AccuracyHistory()
 train_batch_size = int(len(train) / 50)
 test_batch_size = int(len(test) / 25)
 epochs = 10
+#
+# model.fit_generator(generate_train_data(train),
+#                     steps_per_epoch=27,
+#                     callbacks=[history],
+#                     epochs=10)
+#
+# model.save("samples/model.h5")
+model = load_model("samples/model.h5")
+scores = model.predict_generator(generate_test_data(test), steps=25)
+print(scores)
+real = np.zeros((len(test), ), dtype=np.float32)
+for i in range(0, len(test)):
+    real[i] = test[i][1]
 
-model.fit_generator(generate_train_data(train),
-                    samples_per_epoch=train_batch_size,
-                    nb_epoch=epochs,
-                    shuffle=True,
-                    callbacks=[history],
-                    validation_data=generate_test_outliers(out),
-                    validation_steps=10)
+print(scores)
 
-model.save("model.h5")
 
-score = model.evaluate_generator(generate_test_outliers(out), steps=5)
-print(score)
-# plt.plot(range(1, 10), history.acc)
-# plt.xlabel('Epochs')
-# plt.ylabel('Accuracy')
-# plt.show()
+# model = load_model("samples/model.h5")
+# out = get_outliers_validation_data()
+# print(model.metrics_names)
+# score = model.evaluate_generator(generate_test_outliers(out), steps=10)
+# print(score)
+#
+# scores = model.predict_generator(generate_test_data(test), steps=25)
+#
+# real = np.zeros((len(test),), dtype=np.float32)
+# for i in range(0, len(test)):
+#     real[i] = test[i][1]
+#
+#
+
+def generate_results(y_test, y_score):
+    fpr, tpr, _ = roc_curve(y_test, y_score)
+    roc_auc = auc(fpr, tpr)
+    plt.figure()
+    plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic curve')
+    plt.show()
+    print('AUC: %f' % roc_auc)
+
+
+generate_results(real, scores)
+# score = model.evaluate_generator(generate_test_data(test), steps=25)
+# print(score)
