@@ -224,7 +224,7 @@ def show_distribution_by_classes(dataset_file_name):
         print(classes)
 
 
-show_distribution_by_classes("samples/bad_samples.csv")
+# show_distribution_by_classes("samples/bad_samples.csv")
 # show_average_vel_by_squares("samples/bad_samples.csv")
 # print(show_average_vel_by_squares("samples/bad_samples.csv"))
 # print(extract_square_index("samples/bad/vel/ARCTIC_1h_UV_grid_UV_20130101-20130101_0_0"))
