@@ -7,7 +7,6 @@ from keras.models import load_model
 from matplotlib.patches import Polygon
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NetCDFFile
-import matplotlib.cm as cm
 
 import data
 import image as img
@@ -45,10 +44,10 @@ def draw_velocity_map(nc_file_name):
     lat = nc.variables['nav_lat_grid_U'][:]
     lon = nc.variables['nav_lon_grid_U'][:]
     vel_dir = "samples/bad/vel/"
-
+    nc_name = nc_file_name.split("/")[4].split(".")[0]
     velocity = np.zeros((400, 1100), dtype=np.float32)
     for file_name in os.listdir(vel_dir):
-        if nc_file_name.split(".")[0].split("/")[4] in file_name:
+        if nc_name in file_name:
             square = img.load_square_from_file(vel_dir + file_name.split(".")[0])
             print(file_name)
             print(str(np.min(square)) + "; " + str(np.max(square)))
@@ -65,13 +64,13 @@ def draw_velocity_map(nc_file_name):
     lon_right_top = lon[0][0]
 
     lat_center = 90
-    #110, 119
-    lon_center = 119
+    # 110, 119
+    lon_center = 110
     m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.3)
+    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.5)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
@@ -79,11 +78,11 @@ def draw_velocity_map(nc_file_name):
     plt.colorbar()
     plt.title(nc_file_name)
     model = load_model("samples/model.h5")
-    with open("samples/valid_samples.csv", 'r', newline='') as csvfile:
+    with open("samples/rest_bad_samples.csv", 'r', newline='') as csvfile:
         samples = []
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
-            if "samples/bad/vel/ARCTIC_1h_UV_grid_UV_20130404-20130404" in row[0]:
+            if "samples/bad/vel/" + nc_name in row[0]:
                 print(row)
                 samples.append(row)
                 square_index = data.extract_square_index(row[0])
@@ -130,4 +129,6 @@ def draw_velocity_map(nc_file_name):
     plt.show()
 
 
-draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130404-20130404.nc")
+draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130401-20130401.nc")
+
+
