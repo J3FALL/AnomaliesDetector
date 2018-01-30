@@ -70,7 +70,7 @@ def draw_velocity_map(nc_file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.5)
+    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmin=0.5, vmax=1.0)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
@@ -129,6 +129,6 @@ def draw_velocity_map(nc_file_name):
     plt.show()
 
 
-draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130401-20130401.nc")
+draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130301-20130301.nc")
 
 
