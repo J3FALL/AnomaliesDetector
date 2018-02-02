@@ -70,7 +70,7 @@ def draw_velocity_map(nc_file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.5)
+    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.6)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
@@ -78,7 +78,7 @@ def draw_velocity_map(nc_file_name):
     plt.colorbar()
     plt.title(nc_file_name)
     model = load_model("samples/model.h5")
-    with open("samples/rest_bad_samples.csv", 'r', newline='') as csvfile:
+    with open("samples/valid_samples.csv", 'r', newline='') as csvfile:
         samples = []
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:

@@ -6,9 +6,8 @@ import numpy as np
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
-from keras.models import load_model
 from sklearn.metrics import roc_curve, precision_recall_curve, auc
-
+from keras.models import load_model
 import image
 
 
@@ -153,14 +152,14 @@ history = AccuracyHistory()
 train_batch_size = int(len(train) / 50)
 test_batch_size = int(len(test) / 25)
 epochs = 10
-#
-# model.fit_generator(generate_train_data(train),
-#                     steps_per_epoch=27,
-#                     callbacks=[history],
-#                     epochs=10)
-#
-# model.save("samples/model.h5")
-model = load_model("samples/model.h5")
+
+model.fit_generator(generate_train_data(train),
+                    steps_per_epoch=27,
+                    callbacks=[history],
+                    epochs=10)
+
+model.save("samples/model.h5")
+#model = load_model("samples/model.h5")
 scores = model.predict_generator(generate_test_data(test), steps=25)
 print(scores)
 real = np.zeros((len(test),), dtype=np.float32)

@@ -224,6 +224,33 @@ def show_distribution_by_classes(dataset_file_name):
         print(classes)
 
 
+def count_outlier_squares(dataset_file_name):
+    with open(dataset_file_name, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        square_by_count = {}
+        max_900_0 = 0.0
+        for row in reader:
+            idx = extract_square_index(row[0])
+            if row[1] == "1":
+                print(str(idx) + " " + row[3])
+                if idx in square_by_count:
+                    square_by_count[idx] += 1
+                else:
+                    square_by_count[idx] = 1
+            if idx == "100_0" and row[1] == "1":
+                max_900_0 = max(max_900_0, float(row[3]))
+                square = img.load_square_from_file(row[0])
+                plt.figure(figsize=(10, 8))
+                plt.imshow(square.transpose())
+                plt.title("Sample: " + row[0] + " with label: " + row[1])
+                plt.colorbar()
+                plt.show()
+
+        print(square_by_count)
+        print(max_900_0)
+
+
+#count_outlier_squares("samples/valid_samples.csv")
 # show_distribution_by_classes("samples/bad_samples.csv")
 # show_average_vel_by_squares("samples/bad_samples.csv")
 # print(show_average_vel_by_squares("samples/bad_samples.csv"))
