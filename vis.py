@@ -129,6 +129,65 @@ def draw_velocity_map(nc_file_name):
     plt.show()
 
 
-draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130401-20130401.nc")
+def draw_velocity_map_with_level(nc_file_name, level):
+    nc = NetCDFFile(nc_file_name, 'r+')
+    lat = nc.variables['nav_lat_grid_U'][:]
+    lon = nc.variables['nav_lon_grid_U'][:]
+
+    velocity = np.zeros((400, 1100), dtype=np.float32)
+
+    time = 0
+
+    x_vel = nc.variables['vozocrtx'][:][time][level]
+    y_vel = nc.variables['vomecrty'][:][time][level]
+
+    velocity = data.calculate_velocity_magnitude_matrix(x_vel, y_vel)
+
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='jet', vmax=0.6)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    plt.colorbar()
+    plt.title(nc_file_name)
+
+    model = load_model("samples/model.h5")
+
+    for y in range(0, 400, 100):
+        for x in range(0, 1100, 100):
+            sample = np.zeros((1, 100, 100, 1), dtype=np.float32)
+            sample[0] = np.expand_dims(velocity[y:y + 100, x:x + 100], axis=2)
+            # print(sample)
+            result = model.predict(sample)
+            result_x, result_y = m(lon[y + 50][x + 50], lat[y + 50][x + 50])
+            max_x, max_y = m(lon[y + 70][x + 50], lat[y + 70, x + 50])
+            plt.text(result_x, result_y, str(result[0][0]), ha='center', size=10, color="yellow")
+            plt.text(max_x, max_y, np.max(sample[0]), ha='center', size=10, color="yellow")
+            if result[0][0] > 0.5:
+                lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
+                lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
+                mapx, mapy = m(lon_poly, lat_poly)
+                points = np.zeros((4, 2), dtype=np.float32)
+                for j in range(0, 4):
+                    points[j][0] = mapx[j]
+                    points[j][1] = mapy[j]
+                poly = Polygon(points, facecolor='green', alpha=0.4)
+                plt.gca().add_patch(poly)
+
+    plt.show()
 
 
+draw_velocity_map_with_level("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc", 15)
+# draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")
