@@ -3,10 +3,13 @@ import csv
 import keras
 import matplotlib.pyplot as plt
 import numpy as np
+from keras import backend as K
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
+from keras.models import load_model
 from sklearn.metrics import roc_curve, precision_recall_curve, auc
+from sklearn.model_selection import train_test_split
 
 import image
 
@@ -41,6 +44,12 @@ def test_data():
     samples = read_samples(valid_samples_file)
 
     return samples
+
+
+def split_data(samples, test_size):
+    train, test = train_test_split(samples, test_size=test_size)
+
+    return train, test
 
 
 def data_generator(samples, batch_size):
@@ -86,56 +95,122 @@ class AccuracyHistory(keras.callbacks.Callback):
         self.acc.append(logs.get('acc'))
 
 
-train = train_data()
-test = test_data()
-history = AccuracyHistory()
-train_batch_size = int(len(train) / 50)
-test_batch_size = int(len(test) / 25)
-epochs = 10
-
-model = init_model()
-model.fit_generator(data_generator(train, train_batch_size),
-                    steps_per_epoch=27,
-                    callbacks=[history],
-                    epochs=10)
-
-model.save("samples/model.h5")
-# model = load_model("samples/model.h5")
-scores = model.predict_generator(data_generator(test, test_batch_size), steps=25)
-print(scores)
-real = np.zeros((len(test),), dtype=np.float32)
-for i in range(0, len(test)):
-    real[i] = test[i][1]
-
-print(scores)
-
-
 def generate_results(y_test, y_score):
     fpr, tpr, _ = roc_curve(y_test, y_score)
     roc_auc = auc(fpr, tpr)
-    plt.figure()
-    plt.plot(fpr, tpr)
-    plt.plot([0, 1], [0, 1], 'k--')
-    plt.xlim([0.0, 1.05])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+
+    # plt.figure()
+    # plt.plot(fpr, tpr)
+    # plt.plot([0, 1], [0, 1], 'k--')
+    # plt.xlim([0.0, 1.05])
+    # plt.ylim([0.0, 1.05])
+    # plt.xlabel('False Positive Rate')
+    # plt.ylabel('True Positive Rate')
+    # plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
     print('AUC: %f' % roc_auc)
 
-    plt.show()
+    # plt.show()
 
     pr, rc, _ = precision_recall_curve(y_test, y_score)
     pr_auc = auc(rc, pr)
-    plt.plot(pr, rc)
-    plt.xlim([0.0, 1.05])
-    plt.ylim([0.0, 1.05])
-    plt.title('Precision-Recall curve with AUC(%0.2f)' % pr_auc)
-    plt.xlabel('Precision')
-    plt.ylabel('Recall')
+    # plt.plot(pr, rc)
+    # plt.xlim([0.0, 1.05])
+    # plt.ylim([0.0, 1.05])
+    # plt.title('Precision-Recall curve with AUC(%0.2f)' % pr_auc)
+    # plt.xlabel('Precision')
+    # plt.ylabel('Recall')
     print('AUC: %f' % pr_auc)
 
+    # plt.show()
+
+    return roc_auc, pr_auc
+
+
+def calc_batch_size(batch_len, min_size, max_size):
+    for size in range(min_size, max_size):
+        a, b = divmod(batch_len, size)
+        if b == 0:
+            return size
+
+
+def run_metrics_experiment():
+    r = read_samples("samples/rest_bad_samples.csv")
+    roc = []
+    pr = []
+    t_size = []
+    for test_size in np.arange(0.05, 1, 0.05):
+        size = round(test_size, 2)
+        train, test = split_data(r, size)
+        print("test_part: " + str(size) + " train_size: " + str(len(train)) + " test_size: " + str(len(test)))
+
+        history = AccuracyHistory()
+        train_middle = int(len(train) / 50)
+        test_middle = int(len(test) / 25)
+        train_batch_size = calc_batch_size(len(train), int(train_middle - 0.5 * train_middle),
+                                           int(train_middle + 0.5 * train_middle))
+        test_batch_size = calc_batch_size(len(test), int(test_middle - 0.5 * test_middle),
+                                          int(test_middle + 0.5 * test_middle))
+        # train_batch_size = int(len(train) / 50)
+        # test_batch_size = int(len(test) / 25)
+        epochs = 10
+        print(train_batch_size)
+        print(test_batch_size)
+        K.clear_session()
+        model = init_model()
+        model.fit_generator(data_generator(train, train_batch_size),
+                            steps_per_epoch=train_batch_size,
+                            callbacks=[history],
+                            epochs=epochs)
+
+        model = load_model("samples/model.h5")
+        scores = model.predict_generator(data_generator(test, test_batch_size), steps=int(len(test) / test_batch_size))
+        print(scores)
+        real = np.zeros((len(test),), dtype=np.float32)
+        for i in range(0, len(test)):
+            real[i] = test[i][1]
+
+        roc_auc, pr_auc = generate_results(real, scores)
+
+        roc.append(roc_auc)
+        pr.append(pr_auc)
+        t_size.append(test_size)
+
+    plt.plot(t_size, roc)
+    plt.plot(t_size, pr)
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("test_part_size")
+    plt.ylabel("AUC")
     plt.show()
 
 
-generate_results(real, scores)
+def run_default_model():
+    train = train_data()
+    test = test_data()
+    history = AccuracyHistory()
+    train_batch_size = int(len(train) / 50)
+    test_batch_size = int(len(test) / 25)
+    epochs = 10
+
+    model = init_model()
+
+    model.fit_generator(data_generator(train, train_batch_size),
+                        steps_per_epoch=train_batch_size,
+                        callbacks=[history],
+                        epochs=10)
+
+    model.save("samples/model.h5")
+
+    # model = load_model("samples/model.h5")
+    scores = model.predict_generator(data_generator(test, test_batch_size), steps=25)
+    print(scores)
+    real = np.zeros((len(test),), dtype=np.float32)
+    for i in range(0, len(test)):
+        real[i] = test[i][1]
+
+    print(scores)
+
+    generate_results(real, scores)
+
+
+run_metrics_experiment()
