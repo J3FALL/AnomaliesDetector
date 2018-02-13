@@ -135,9 +135,10 @@ def calc_batch_size(batch_len, min_size, max_size):
 
 def run_metrics_experiment():
     r = read_samples("samples/rest_bad_samples.csv")
-    roc = []
-    pr = []
+    roc = np.zeros((19, 3), dtype=np.float32)
+    pr = np.zeros((19, 3), dtype=np.float32)
     t_size = []
+    idx = 0
     for test_size in np.arange(0.05, 1, 0.05):
         size = round(test_size, 2)
         train, test = split_data(r, size)
@@ -152,31 +153,44 @@ def run_metrics_experiment():
                                           int(test_middle + 0.5 * test_middle))
         # train_batch_size = int(len(train) / 50)
         # test_batch_size = int(len(test) / 25)
-        epochs = 10
+        epochs = 5
         print(train_batch_size)
         print(test_batch_size)
-        K.clear_session()
-        model = init_model()
-        model.fit_generator(data_generator(train, train_batch_size),
-                            steps_per_epoch=train_batch_size,
-                            callbacks=[history],
-                            epochs=epochs)
+        roc_tmp = []
+        pr_tmp = []
+        for _ in range(5):
+            K.clear_session()
+            model = init_model()
+            model.fit_generator(data_generator(train, train_batch_size),
+                                steps_per_epoch=train_batch_size,
+                                callbacks=[history],
+                                epochs=epochs)
 
-        model = load_model("samples/model.h5")
-        scores = model.predict_generator(data_generator(test, test_batch_size), steps=int(len(test) / test_batch_size))
-        print(scores)
-        real = np.zeros((len(test),), dtype=np.float32)
-        for i in range(0, len(test)):
-            real[i] = test[i][1]
+            # model = load_model("samples/model.h5")
+            scores = model.predict_generator(data_generator(test, test_batch_size), steps=int(len(test) / test_batch_size))
+            print(scores)
+            real = np.zeros((len(test),), dtype=np.float32)
+            for i in range(0, len(test)):
+                real[i] = test[i][1]
 
-        roc_auc, pr_auc = generate_results(real, scores)
+            roc_auc, pr_auc = generate_results(real, scores)
+            roc_tmp.append(roc_auc)
+            pr_tmp.append(pr_auc)
 
-        roc.append(roc_auc)
-        pr.append(pr_auc)
+        roc[idx][0] = np.average(roc_tmp)
+        roc[idx][1] = np.min(roc_tmp)
+        roc[idx][2] = np.max(roc_tmp)
+        pr[idx][0] = np.average(pr_tmp)
+        pr[idx][1] = np.min(pr_tmp)
+        pr[idx][2] = np.max(pr_tmp)
+
         t_size.append(test_size)
+        idx += 1
 
-    plt.plot(t_size, roc)
-    plt.plot(t_size, pr)
+    plt.plot(t_size, roc[:, 0])
+    plt.fill_between(t_size, roc[:, 1], roc[:, 2], alpha=0.3)
+    plt.plot(t_size, pr[:, 0])
+    plt.fill_between(t_size, pr[:, 1], pr[:, 2], alpha=0.5)
     plt.xlim([0.0, 1.05])
     plt.ylim([0.0, 1.05])
     plt.xlabel("test_part_size")
