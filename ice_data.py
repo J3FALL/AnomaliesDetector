@@ -1,4 +1,5 @@
 import csv
+import os
 
 from netCDF4 import Dataset as NCFile
 
@@ -67,13 +68,22 @@ class IceSample:
         return IceSample(raw[0], int(raw[1]), int(raw[2]), int(raw[3]))
 
 
-data = Dataset("samples/test.csv")
-data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 1, 100, 0))
-data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 10, 100, 0))
-data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 15, 100, 0))
-data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 34, 100, 0))
-data.dump_to_csv()
+def construct_ice_dataset():
+    dataset = Dataset("samples/ice_samples.csv")
 
-data = Dataset.from_csv("samples/test.csv")
+    data_dir = "samples/ice_data"
 
-print(data.samples)
+    size = 100
+    squares_amount = 44
+    times_amount = 24
+
+    for nc_file in os.listdir(data_dir):
+        # open NetCDF, slice it to samples with size = (100, 100)
+        # each square contains data for [0..24] hours
+        for square_index in range(1, squares_amount + 1):
+            for time in range(times_amount):
+                dataset.samples.append(IceSample(data_dir + nc_file, square_index, size, time))
+    dataset.dump_to_csv()
+
+
+construct_ice_dataset()
