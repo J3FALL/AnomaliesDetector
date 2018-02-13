@@ -1,4 +1,32 @@
+import csv
+
 from netCDF4 import Dataset as NCFile
+
+
+class Dataset:
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+        self.samples = []
+
+    def dump_to_csv(self):
+        with open(self.file_name, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile, delimiter=',')
+            for sample in self.samples:
+                writer.writerow(sample.raw_data())
+
+    @staticmethod
+    def from_csv(file_name):
+        samples = []
+        with open(file_name, 'r', newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                samples.append(IceSample.from_raw_data(row))
+
+        dataset = Dataset(file_name)
+        dataset.samples = samples
+
+        return dataset
 
 
 class IceSample:
@@ -34,8 +62,18 @@ class IceSample:
     def raw_data(self):
         return [str(self.nc_file), str(self.index), str(self.time), str(self.label)]
 
+    @staticmethod
+    def from_raw_data(raw):
+        return IceSample(raw[0], int(raw[1]), int(raw[2]), int(raw[3]))
 
-sample = IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 1, 100, 0)
-print(sample.ice_conc())
-print(sample.ice_thic())
-print(sample.raw_data())
+
+data = Dataset("samples/test.csv")
+data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 1, 100, 0))
+data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 10, 100, 0))
+data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 15, 100, 0))
+data.samples.append(IceSample("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc", 34, 100, 0))
+data.dump_to_csv()
+
+data = Dataset.from_csv("samples/test.csv")
+
+print(data.samples)
