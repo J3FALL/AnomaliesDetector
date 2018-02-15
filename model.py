@@ -7,7 +7,6 @@ from keras import backend as K
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
-from keras.models import load_model
 from sklearn.metrics import roc_curve, precision_recall_curve, auc
 from sklearn.model_selection import train_test_split
 
@@ -167,7 +166,8 @@ def run_metrics_experiment():
                                 epochs=epochs)
 
             # model = load_model("samples/model.h5")
-            scores = model.predict_generator(data_generator(test, test_batch_size), steps=int(len(test) / test_batch_size))
+            scores = model.predict_generator(data_generator(test, test_batch_size),
+                                             steps=int(len(test) / test_batch_size))
             print(scores)
             real = np.zeros((len(test),), dtype=np.float32)
             for i in range(0, len(test)):
@@ -204,6 +204,9 @@ def run_default_model():
     history = AccuracyHistory()
     train_batch_size = int(len(train) / 50)
     test_batch_size = int(len(test) / 25)
+
+    print(train_batch_size)
+    print(test_batch_size)
     epochs = 10
 
     model = init_model()
@@ -227,4 +230,5 @@ def run_default_model():
     generate_results(real, scores)
 
 
-run_metrics_experiment()
+# run_metrics_experiment()
+run_default_model()
