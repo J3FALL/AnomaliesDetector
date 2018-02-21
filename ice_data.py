@@ -2,7 +2,6 @@ import csv
 import os
 
 import keras
-from netCDF4 import Dataset as NCFile
 
 
 class Dataset:
@@ -54,10 +53,10 @@ class IceSample:
 
         return ice
 
-    def ice_thic(self):
-        nc = NCFile(self.nc_file)
-        thic = nc.variables['icethic_cea'][:][self.time][self.x:self.x + self.size, self.y:self.y + self.size]
-        nc.close()
+    def ice_thic(self, var):
+        # nc = NCFile(self.nc_file)
+        thic = var[self.time][self.x:self.x + self.size, self.y:self.y + self.size]
+        # nc.close()
 
         return thic
 
@@ -90,4 +89,4 @@ def construct_ice_dataset():
     dataset.dump_to_csv()
 
 
-construct_ice_dataset()
+# construct_ice_dataset()
