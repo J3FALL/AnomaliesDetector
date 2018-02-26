@@ -168,7 +168,7 @@ for idx in range(len(train)):
 tt_samples = []
 for idx in range(len(test)):
     tt_samples.append([test[idx], test_idx[idx]])
-epochs = 20
+epochs = 1
 
 container = VarsContainer()
 
