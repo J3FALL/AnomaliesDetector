@@ -154,4 +154,4 @@ def draw_ice_data(file_name):
 
 # construct_ice_dataset()
 
-# draw_ice_data("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000829-20000829.nc_1.nc")
+# draw_ice_data("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20140913-20140913.nc_1.nc")

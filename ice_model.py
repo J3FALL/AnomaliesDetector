@@ -10,7 +10,7 @@ from ice_data import Dataset
 
 
 def init_model():
-    input_shape = (100, 100, 2)
+    input_shape = (100, 100, 3)
     num_squares = 44
 
     model = Sequential()
@@ -85,18 +85,22 @@ class VarsContainer:
             return self.conc_dic[file_name], self.thic_dic[file_name]
 
 
-def data_generator(samples, batch_size, vars_container):
+def data_generator(samples, batch_size, vars_container, full_mask):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
-            x = np.zeros((batch_size, 100, 100, 2), dtype=np.float32)
+            x = np.zeros((batch_size, 100, 100, 3), dtype=np.float32)
             y = np.zeros((batch_size, 44))
             for index in range(sample_index, sample_index + batch_size):
                 nc_file = samples[index][0].nc_file
                 conc, thic = vars_container.values(nc_file)
                 ice_square = samples[index][0].ice_conc(conc)
                 thic_square = samples[index][0].ice_thic(thic)
+                square_size = samples[index][0].size
+                mask_x, mask_y = divmod(samples[index][0].index - 1, 11)
+                mask = full_mask[mask_x * square_size:mask_x * square_size + square_size, mask_y * square_size:mask_y * square_size + square_size]
+
                 # expanded = np.expand_dims(ice_square, axis=2)
-                combined = np.stack(arrays=[ice_square, thic_square], axis=2)
+                combined = np.stack(arrays=[ice_square, thic_square, mask], axis=2)
                 x[index - sample_index] = combined
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
@@ -168,13 +172,18 @@ for idx in range(len(train)):
 tt_samples = []
 for idx in range(len(test)):
     tt_samples.append([test[idx], test_idx[idx]])
+
+mask_file = NCFile("samples/bathy_meter_mask.nc")
+coastline_mask = mask_file.variables['Bathymetry'][:]
+mask_file.close()
+
 epochs = 1
 
 container = VarsContainer()
 
 model = init_model()
 history = AccuracyHistory()
-model.fit_generator(data_generator(tr_samples, train_batch_size, container),
+model.fit_generator(data_generator(tr_samples, train_batch_size, container, coastline_mask),
                     steps_per_epoch=train_batch_size,
                     callbacks=[history],
                     epochs=epochs)
@@ -183,7 +192,7 @@ model.save("samples/model.h5")
 # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
 #                                  steps=int(len(test) / test_batch_size))
 
-t = model.evaluate_generator(data_generator(tt_samples, test_batch_size, container),
+t = model.evaluate_generator(data_generator(tt_samples, test_batch_size, container, coastline_mask),
                              steps=int(len(test) / test_batch_size))
 print(t)
 # print(scores)
