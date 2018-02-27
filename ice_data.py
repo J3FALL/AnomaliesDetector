@@ -5,9 +5,10 @@ import keras
 import matplotlib.pyplot as plt
 import numpy as np
 from keras.models import load_model
+from matplotlib.patches import Polygon
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NCFile
-from matplotlib.patches import Polygon
+
 
 class Dataset:
     def __init__(self, file_name):
@@ -48,19 +49,21 @@ class IceSample:
         self.label = label
 
     def get_borders(self):
-        x, y = divmod(self.index - 1, 11)
+        x, y = divmod(self.index - 1, 22)
         return x, y
 
     def ice_conc(self, var):
         # nc = NCFile(self.nc_file)
-        ice = var[self.time][self.x * self.size:self.x * self.size + self.size, self.y * self.size:self.y * self.size + self.size]
+        ice = var[self.time][self.x * self.size:self.x * self.size + self.size,
+              self.y * self.size:self.y * self.size + self.size]
         # nc.close()
 
         return ice
 
     def ice_thic(self, var):
         # nc = NCFile(self.nc_file)
-        thic = var[self.time][self.x * self.size:self.x * self.size + self.size, self.y * self.size:self.y * self.size + self.size]
+        thic = var[self.time][self.x * self.size:self.x * self.size + self.size,
+               self.y * self.size:self.y * self.size + self.size]
         # nc.close()
 
         return thic
@@ -94,12 +97,33 @@ def construct_ice_dataset():
     dataset.dump_to_csv()
 
 
+def construct_ice_dataset_with_small_grid():
+    dataset = Dataset("samples/ice_samples_small_grid.csv")
+
+    data_dir = "samples/ice_data/"
+
+    size = 50
+    squares_amount = 176
+    times_amount = 24
+
+    for nc_file in os.listdir(data_dir):
+        # open NetCDF, slice it to samples with size = (100, 100)
+        # each square contains data for [0..24] hours
+        for square_index in range(1, squares_amount + 1):
+            for time in range(times_amount):
+                dataset.samples.append(IceSample(data_dir + nc_file, square_index, size, time, 0))
+    dataset.dump_to_csv()
+
+
 def draw_ice_data(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
     conc = nc.variables['iceconc'][:][0]
     thic = nc.variables['icethic_cea'][:][0]
+    mask_file = NCFile("samples/bathy_meter_mask.nc")
+    coastline_mask = mask_file.variables['Bathymetry'][:]
+    mask_file.close()
 
     nc.close()
 
@@ -114,7 +138,7 @@ def draw_ice_data(file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, conc, latlon=True, cmap='jet')
+    m.pcolormesh(lon, lat, thic, latlon=True, cmap='jet')
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
@@ -124,8 +148,10 @@ def draw_ice_data(file_name):
     real_idx = 0
     for y in range(0, 400, 100):
         for x in range(0, 1100, 100):
-            sample = np.zeros((1, 100, 100, 2))
-            combined = np.stack(arrays=[conc[y:y + 100, x:x + 100], thic[y:y + 100, x:x + 100]], axis=2)
+            sample = np.zeros((1, 100, 100, 3))
+            combined = np.stack(
+                arrays=[conc[y:y + 100, x:x + 100], thic[y:y + 100, x:x + 100], coastline_mask[y:y + 100, x:x + 100]],
+                axis=2)
             sample[0] = combined
             result = model.predict(sample)
             predicted_index = np.argmax(result[0])
@@ -133,7 +159,8 @@ def draw_ice_data(file_name):
             plt.text(result_x, result_y, str(predicted_index), ha='center', size=10, color="yellow")
             result_x, result_y = m(lon[y + 70][x + 50], lat[y + 70][x + 50])
             plt.text(result_x, result_y, str(real_idx), ha='center', size=10, color="yellow")
-
+            result_x, result_y = m(lon[y + 90][x + 50], lat[y + 90][x + 50])
+            plt.text(result_x, result_y, str(result[0][predicted_index]), ha='center', size=10, color="yellow")
             lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
             lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
             mapx, mapy = m(lon_poly, lat_poly)
@@ -154,4 +181,6 @@ def draw_ice_data(file_name):
 
 # construct_ice_dataset()
 
-# draw_ice_data("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20140913-20140913.nc_1.nc")
+# draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
+# construct_ice_dataset_with_small_grid()
+

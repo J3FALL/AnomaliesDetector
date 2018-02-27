@@ -10,8 +10,8 @@ from ice_data import Dataset
 
 
 def init_model():
-    input_shape = (100, 100, 3)
-    num_squares = 44
+    input_shape = (50, 50, 3)
+    num_squares = 176
 
     model = Sequential()
     model.add(Conv2D(32, kernel_size=(5, 5), strides=(1, 1),
@@ -55,7 +55,7 @@ class VarsContainer:
 
         self.files_by_counts = {}
 
-        self.limit = 43 * 23
+        self.limit = 175 * 23
 
     def values(self, file_name):
 
@@ -88,16 +88,17 @@ class VarsContainer:
 def data_generator(samples, batch_size, vars_container, full_mask):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
-            x = np.zeros((batch_size, 100, 100, 3), dtype=np.float32)
-            y = np.zeros((batch_size, 44))
+            x = np.zeros((batch_size, 50, 50, 3), dtype=np.float32)
+            y = np.zeros((batch_size, 176))
             for index in range(sample_index, sample_index + batch_size):
                 nc_file = samples[index][0].nc_file
                 conc, thic = vars_container.values(nc_file)
                 ice_square = samples[index][0].ice_conc(conc)
                 thic_square = samples[index][0].ice_thic(thic)
                 square_size = samples[index][0].size
-                mask_x, mask_y = divmod(samples[index][0].index - 1, 11)
-                mask = full_mask[mask_x * square_size:mask_x * square_size + square_size, mask_y * square_size:mask_y * square_size + square_size]
+                mask_x, mask_y = divmod(samples[index][0].index - 1, 22)
+                mask = full_mask[mask_x * square_size:mask_x * square_size + square_size,
+                       mask_y * square_size:mask_y * square_size + square_size]
 
                 # expanded = np.expand_dims(ice_square, axis=2)
                 combined = np.stack(arrays=[ice_square, thic_square, mask], axis=2)
@@ -121,78 +122,119 @@ class AccuracyHistory(keras.callbacks.Callback):
         self.acc.append(logs.get('acc'))
 
 
-data = read_samples("samples/ice_samples.csv")
+def big_grid():
+    data = read_samples("samples/ice_samples.csv")
 
-# d_conc = {}
-# d_thic = {}
-#
-# idx = 0
-# for sample in data.samples:
-#     if sample.nc_file not in d_conc:
-#         idx += 1
-#         print(sample.nc_file)
-#         nc = NCFile(sample.nc_file)
-#         ice = nc.variables['iceconc'][:]
-#         thic = nc.variables['icethic_cea'][:]
-#         d_conc[sample.nc_file] = ice
-#         d_thic[sample.nc_file] = thic
-# print("NetCDFs were loaded")
+    train, test = split_data(data.samples, 0.2)
 
-train, test = split_data(data.samples, 0.2)
+    # train_middle = int(len(train) / 250)
+    # test_middle = int(len(test) / 100)
+    # train_batch_size = calc_batch_size(len(train), int(train_middle - 0.5 * train_middle),
+    #                                    int(train_middle + 0.5 * train_middle))
+    # test_batch_size = calc_batch_size(len(test), int(test_middle - 0.5 * test_middle),
+    #                                   int(test_middle + 0.5 * test_middle))
 
-# train_middle = int(len(train) / 250)
-# test_middle = int(len(test) / 100)
-# train_batch_size = calc_batch_size(len(train), int(train_middle - 0.5 * train_middle),
-#                                    int(train_middle + 0.5 * train_middle))
-# test_batch_size = calc_batch_size(len(test), int(test_middle - 0.5 * test_middle),
-#                                   int(test_middle + 0.5 * test_middle))
+    train_batch_size = 80
+    test_batch_size = 80
+    print(len(train))
+    print(len(test))
 
-train_batch_size = 80
-test_batch_size = 80
-print(len(train))
-print(len(test))
+    print(train_batch_size)
+    print(test_batch_size)
 
-print(train_batch_size)
-print(test_batch_size)
+    train_idx = []
+    for sample in train:
+        train_idx.append(sample.index - 1)
+    train_idx = keras.utils.to_categorical(train_idx, 44)
 
-train_idx = []
-for sample in train:
-    train_idx.append(sample.index - 1)
-train_idx = keras.utils.to_categorical(train_idx, 44)
+    test_idx = []
+    for sample in test:
+        test_idx.append(sample.index - 1)
+    test_idx = keras.utils.to_categorical(test_idx, 44)
 
-test_idx = []
-for sample in test:
-    test_idx.append(sample.index - 1)
-test_idx = keras.utils.to_categorical(test_idx, 44)
+    tr_samples = []
+    for idx in range(len(train)):
+        tr_samples.append([train[idx], train_idx[idx]])
 
-tr_samples = []
-for idx in range(len(train)):
-    tr_samples.append([train[idx], train_idx[idx]])
+    tt_samples = []
+    for idx in range(len(test)):
+        tt_samples.append([test[idx], test_idx[idx]])
 
-tt_samples = []
-for idx in range(len(test)):
-    tt_samples.append([test[idx], test_idx[idx]])
+    mask_file = NCFile("samples/bathy_meter_mask.nc")
+    coastline_mask = mask_file.variables['Bathymetry'][:]
+    mask_file.close()
 
-mask_file = NCFile("samples/bathy_meter_mask.nc")
-coastline_mask = mask_file.variables['Bathymetry'][:]
-mask_file.close()
+    epochs = 20
 
-epochs = 1
+    container = VarsContainer()
 
-container = VarsContainer()
+    model = init_model()
+    history = AccuracyHistory()
+    model.fit_generator(data_generator(tr_samples, train_batch_size, container, coastline_mask),
+                        steps_per_epoch=train_batch_size,
+                        callbacks=[history],
+                        epochs=epochs)
+    model.save("samples/model.h5")
+    # model = load_model("samples/model.h5")
+    # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
+    #                                  steps=int(len(test) / test_batch_size))
 
-model = init_model()
-history = AccuracyHistory()
-model.fit_generator(data_generator(tr_samples, train_batch_size, container, coastline_mask),
-                    steps_per_epoch=train_batch_size,
-                    callbacks=[history],
-                    epochs=epochs)
-model.save("samples/model.h5")
-# model = load_model("samples/model.h5")
-# scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
-#                                  steps=int(len(test) / test_batch_size))
+    t = model.evaluate_generator(data_generator(tt_samples, test_batch_size, container, coastline_mask),
+                                 steps=int(len(test) / test_batch_size))
+    print(t)
+    # print(scores)
 
-t = model.evaluate_generator(data_generator(tt_samples, test_batch_size, container, coastline_mask),
-                             steps=int(len(test) / test_batch_size))
-print(t)
-# print(scores)
+
+def small_grid():
+    data = read_samples("samples/ice_samples_small_grid.csv")
+    train, test = split_data(data.samples, 0.2)
+
+    print(len(train))
+    print(len(test))
+    train_batch_size = 80
+    test_batch_size = 80
+
+    train_idx = []
+    for sample in train:
+        train_idx.append(sample.index - 1)
+    train_idx = keras.utils.to_categorical(train_idx, 176)
+
+    test_idx = []
+    for sample in test:
+        test_idx.append(sample.index - 1)
+    test_idx = keras.utils.to_categorical(test_idx, 176)
+
+    tr_samples = []
+    for idx in range(len(train)):
+        tr_samples.append([train[idx], train_idx[idx]])
+
+    tt_samples = []
+    for idx in range(len(test)):
+        tt_samples.append([test[idx], test_idx[idx]])
+
+    mask_file = NCFile("samples/bathy_meter_mask.nc")
+    coastline_mask = mask_file.variables['Bathymetry'][:]
+    mask_file.close()
+
+    epochs = 20
+
+    container = VarsContainer()
+
+    model = init_model()
+    history = AccuracyHistory()
+    model.fit_generator(data_generator(tr_samples, train_batch_size, container, coastline_mask),
+                        steps_per_epoch=train_batch_size,
+                        callbacks=[history],
+                        epochs=epochs)
+    model.save("samples/small_grid_model.h5")
+    # model = load_model("samples/model.h5")
+    # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
+    #                                  steps=int(len(test) / test_batch_size))
+
+    t = model.evaluate_generator(data_generator(tt_samples, test_batch_size, container, coastline_mask),
+                                 steps=int(len(test) / test_batch_size))
+    print(t)
+    # print(scores)
+
+
+small_grid()
