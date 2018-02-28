@@ -294,6 +294,11 @@ def draw_ice_ocean_only(file_name):
                *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
                *list(range(139, 143))
                ]
+    levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
+              [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
+              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
+              [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
+
     real_idx = 0
     for y in range(0, 400, 50):
         for x in range(0, 1100, 50):
@@ -305,12 +310,14 @@ def draw_ice_ocean_only(file_name):
                 sample[0] = combined
                 result = model.predict(sample)
                 predicted_index = np.argmax(result[0])
+
                 result_x, result_y = m(lon[y + 15][x + 25], lat[y + 15][x + 25])
                 plt.text(result_x, result_y, str(predicted_index), ha='center', size=7, color="yellow")
                 result_x, result_y = m(lon[y + 30][x + 25], lat[y + 30][x + 25])
                 plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=7, color="yellow")
                 result_x, result_y = m(lon[y + 45][x + 25], lat[y + 45][x + 25])
                 plt.text(result_x, result_y, str(result[0][predicted_index]), ha='center', size=7, color="yellow")
+
                 lat_poly = np.array([lat[y][x], lat[y][x + 49], lat[y + 49][x + 49], lat[y + 49][x]])
                 lon_poly = np.array([lon[y][x], lon[y][x + 49], lon[y + 49][x + 49], lon[y + 49][x]])
                 mapx, mapy = m(lon_poly, lat_poly)
@@ -318,8 +325,24 @@ def draw_ice_ocean_only(file_name):
                 for j in range(0, 4):
                     points[j][0] = mapx[j]
                     points[j][1] = mapy[j]
-                poly = Polygon(points, edgecolor='black', alpha=0.5)
-                plt.gca().add_patch(poly)
+
+                if predicted_index != squares.index(real_idx):
+                    out = True
+                    for level in levels:
+                        if predicted_index in level and squares.index(real_idx) in level:
+                            out = False
+
+                    if out:
+                        poly = Polygon(points, facecolor='red', alpha=0.6)
+                        plt.gca().add_patch(poly)
+                    else:
+                        poly = Polygon(points, facecolor='yellow', alpha=0.6)
+                        plt.gca().add_patch(poly)
+                else:
+                    poly = Polygon(points, facecolor='green', alpha=0.6)
+                    plt.gca().add_patch(poly)
+                # poly = Polygon(points, edgecolor='black', alpha=0.5)
+                # plt.gca().add_patch(poly)
 
             real_idx += 1
 
@@ -359,7 +382,8 @@ def draw_ice_levels(file_name):
                ]
     levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
               [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
-              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))]]
+              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
+              [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
     print(levels)
     real_idx = 0
     for y in range(0, 400, 50):
@@ -400,8 +424,9 @@ def draw_ice_levels(file_name):
 
     plt.show()
 
-# draw_ice_levels("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000827-20000827.nc_1.nc")
-# raw_ice_ocean_only("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000827-20000827.nc_1.nc")
+
+# draw_ice_levels("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc")
+draw_ice_ocean_only("samples/ice_bad/ARCTIC_1h_ice_grid_TUV_20120921-20120921.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
