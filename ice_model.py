@@ -8,10 +8,37 @@ from sklearn.model_selection import train_test_split
 
 from ice_data import Dataset
 
+squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+           *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+           *list(range(139, 143))
+           ]
+
 
 def init_model():
     input_shape = (50, 50, 3)
     num_squares = 176
+
+    model = Sequential()
+    model.add(Conv2D(32, kernel_size=(5, 5), strides=(1, 1),
+                     activation='relu',
+                     input_shape=input_shape))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+    model.add(Conv2D(64, (5, 5), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Flatten())
+    model.add(Dense(1000, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(num_squares, activation='softmax'))
+
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.Adam(),
+                  metrics=['accuracy'])
+
+    return model
+
+
+def init_ocean_model(num_squares):
+    input_shape = (50, 50, 2)
 
     model = Sequential()
     model.add(Conv2D(32, kernel_size=(5, 5), strides=(1, 1),
@@ -55,7 +82,7 @@ class VarsContainer:
 
         self.files_by_counts = {}
 
-        self.limit = 175 * 23
+        self.limit = 90 * 23
 
     def values(self, file_name):
 
@@ -102,6 +129,23 @@ def data_generator(samples, batch_size, vars_container, full_mask):
 
                 # expanded = np.expand_dims(ice_square, axis=2)
                 combined = np.stack(arrays=[ice_square, thic_square, mask], axis=2)
+                x[index - sample_index] = combined
+                y[index - sample_index] = samples[index][1]
+            yield (x, y)
+
+
+def ocean_data_generator(samples, batch_size, vars_container):
+    while 1:
+        for sample_index in range(0, len(samples), batch_size):
+            x = np.zeros((batch_size, 50, 50, 2), dtype=np.float32)
+            y = np.zeros((batch_size, 91))
+            for index in range(sample_index, sample_index + batch_size):
+                nc_file = samples[index][0].nc_file
+                conc, thic = vars_container.values(nc_file)
+                ice_square = samples[index][0].ice_conc(conc)
+                thic_square = samples[index][0].ice_thic(thic)
+
+                combined = np.stack(arrays=[ice_square, thic_square], axis=2)
                 x[index - sample_index] = combined
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
@@ -237,4 +281,53 @@ def small_grid():
     # print(scores)
 
 
-small_grid()
+def ocean_only():
+    data = read_samples("samples/ice_samples_ocean_only.csv")
+    train, test = split_data(data.samples, 0.2)
+
+    print(len(train))
+    print(len(test))
+    train_batch_size = 80
+    test_batch_size = 60
+
+    train_idx = []
+    for sample in train:
+        train_idx.append(squares.index(sample.index - 1))
+    train_idx = keras.utils.to_categorical(train_idx, len(squares))
+
+    test_idx = []
+    for sample in test:
+        test_idx.append(squares.index(sample.index - 1))
+    test_idx = keras.utils.to_categorical(test_idx, len(squares))
+
+    tr_samples = []
+    for idx in range(len(train)):
+        tr_samples.append([train[idx], train_idx[idx]])
+
+    tt_samples = []
+    for idx in range(len(test)):
+        tt_samples.append([test[idx], test_idx[idx]])
+
+    print(train_idx)
+
+    epochs = 20
+
+    container = VarsContainer()
+
+    model = init_ocean_model(91)
+    history = AccuracyHistory()
+    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container),
+                        steps_per_epoch=train_batch_size,
+                        callbacks=[history],
+                        epochs=epochs)
+    model.save("samples/ocean_only_model.h5")
+    # model = load_model("samples/model.h5")
+    # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
+    #                                  steps=int(len(test) / test_batch_size))
+
+    t = model.evaluate_generator(ocean_data_generator(tt_samples, test_batch_size, container),
+                                 steps=int(len(test) / test_batch_size))
+    print(t)
+
+
+ocean_only()
