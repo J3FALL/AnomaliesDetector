@@ -9,8 +9,8 @@ from keras.models import load_model
 from matplotlib.patches import Polygon
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NCFile
-# from sklearn import tree
-# from sklearn.externals import joblib
+from sklearn import tree
+from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
 
 
@@ -120,16 +120,16 @@ class IceDetector:
                 real_idx += 1
         results = self.model.predict(samples)
 
-        out_amount = 0
+        good_amount = 0
         for idx in range(len(samples)):
             predicted_index = np.argmax(results[idx])
             real_idx = square_idxs[idx]
-            if self.is_outlier(predicted_index, real_idx):
-                out_amount += 1
+            if not self.is_outlier(predicted_index, real_idx):
+                good_amount += 1
 
-        prediction = 1 if out_amount / len(self.squares) > self.alpha else 0
+        prediction = 1 if good_amount / len(self.squares) > self.alpha else 0
 
-        return prediction, out_amount / len(self.squares)
+        return prediction, good_amount / len(self.squares)
 
     def is_outlier(self, predicted_idx, real_idx):
         out = True
@@ -404,8 +404,6 @@ def draw_ice_ocean_only(file_name):
                 else:
                     poly = Polygon(points, facecolor='green', alpha=0.6)
                     plt.gca().add_patch(poly)
-                # poly = Polygon(points, edgecolor='black', alpha=0.5)
-                # plt.gca().add_patch(poly)
 
             real_idx += 1
 
@@ -488,6 +486,87 @@ def draw_ice_levels(file_name):
     plt.show()
 
 
+def visualize_tree_classification(file_name):
+    nc = NCFile(file_name)
+    lat = nc.variables['nav_lat'][:]
+    lon = nc.variables['nav_lon'][:]
+    conc = nc.variables['iceconc'][:][0]
+    thic = nc.variables['icethic_cea'][:][0]
+    nc.close()
+
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, thic, latlon=True, cmap='jet')
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+               *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+               *list(range(139, 143))
+               ]
+    levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
+              [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
+              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
+              [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
+
+    clf = joblib.load('samples/tree.pkl')
+    real_idx = 0
+    for y in range(0, 400, 50):
+        for x in range(0, 1100, 50):
+            if real_idx in squares:
+                square_conc = conc[y:y + 50, x:x + 50]
+                square_thic = thic[y:y + 50, x:x + 50]
+                reshaped = np.append(square_conc.flatten(), square_thic.flatten())
+                result = clf.predict([reshaped])
+                predicted_index = result[0]
+
+                result_x, result_y = m(lon[y + 15][x + 25], lat[y + 15][x + 25])
+                plt.text(result_x, result_y, str(predicted_index), ha='center', size=7, color="yellow")
+                result_x, result_y = m(lon[y + 30][x + 25], lat[y + 30][x + 25])
+                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=7, color="yellow")
+
+                lat_poly = np.array([lat[y][x], lat[y][x + 49], lat[y + 49][x + 49], lat[y + 49][x]])
+                lon_poly = np.array([lon[y][x], lon[y][x + 49], lon[y + 49][x + 49], lon[y + 49][x]])
+                mapx, mapy = m(lon_poly, lat_poly)
+                points = np.zeros((4, 2), dtype=np.float32)
+                for j in range(0, 4):
+                    points[j][0] = mapx[j]
+                    points[j][1] = mapy[j]
+
+                if predicted_index != squares.index(real_idx):
+                    out = True
+                    for level in levels:
+                        if predicted_index in level and squares.index(real_idx) in level:
+                            out = False
+
+                    if out:
+                        poly = Polygon(points, facecolor='red', alpha=0.6)
+                        plt.gca().add_patch(poly)
+                    else:
+                        poly = Polygon(points, facecolor='yellow', alpha=0.6)
+                        plt.gca().add_patch(poly)
+                else:
+                    poly = Polygon(points, facecolor='green', alpha=0.6)
+                    plt.gca().add_patch(poly)
+
+            real_idx += 1
+
+    plt.colorbar()
+    plt.title(file_name)
+
+    plt.show()
+
+
 def test_detector():
     good_dir = "samples/ice_tests/good/2013"
     bad_dir = "samples/ice_tests/bad/"
@@ -529,127 +608,136 @@ def test_detector():
     plt.show()
 
 
-# def tree_classification():
-#     good_dir = "samples/ice_tests/good/"
-#     bad_dir = "samples/ice_tests/bad/"
-#
-#     files = []
-#
-#     # label good data
-#     for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
-#         files.append([os.path.normpath(file_name), 0])
-#
-#     # label bad data
-#     for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
-#         files.append([os.path.normpath(file_name), 1])
-#
-#     squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-#                *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-#                *list(range(139, 143))
-#                ]
-#     levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
-#               [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
-#               [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)),
-#                *list(range(80, 86))],
-#               [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
-#
-#     clf = joblib.load('samples/tree.pkl')
-#
-#     real = []
-#     score = []
-#
-#     for file in files:
-#         nc = NCFile(file[0])
-#         conc = nc.variables['iceconc'][:][0]
-#         thic = nc.variables['icethic_cea'][:][0]
-#         nc.close()
-#
-#         samples = []
-#         labels = []
-#
-#         real_idx = 0
-#         for y in range(0, 400, 50):
-#             for x in range(0, 1100, 50):
-#                 if real_idx in squares:
-#                     square_conc = conc[y:y + 50, x:x + 50]
-#                     square_thic = thic[y:y + 50, x:x + 50]
-#                     reshaped = np.append(square_conc.flatten(), square_thic.flatten())
-#                     samples.append(reshaped)
-#                     labels.append(squares.index(real_idx))
-#                 real_idx += 1
-#
-#         predicted = clf.predict(samples)
-#         out_amount = 0
-#         for idx in range(len(samples)):
-#             predicted_index = predicted[idx]
-#             real_idx = labels[idx]
-#
-#             out = True
-#             if predicted_index != real_idx:
-#                 for level in levels:
-#                     if predicted_index in level and real_idx in level:
-#                         out = False
-#             else:
-#                 out = False
-#             if out:
-#                 out_amount += 1
-#
-#         val = out_amount / len(samples)
-#         real.append(file[1])
-#         score.append(val)
-#
-#         print(str(val) + " " + file[0])
-#
-#     fpr, tpr, _ = roc_curve(real, score)
-#     roc_auc = auc(fpr, tpr)
-#     print('AUC: %f' % roc_auc)
-#
-#     plt.figure()
-#     plt.plot(fpr, tpr)
-#     plt.plot([0, 1], [0, 1], 'k--')
-#     plt.xlim([0.0, 1.05])
-#     plt.ylim([0.0, 1.05])
-#     plt.xlabel('False Positive Rate')
-#     plt.ylabel('True Positive Rate')
-#     plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
-#
-#     plt.show()
-#
-#
-# def fit_tree():
-#     data_dir = "samples/ice_data/"
-#
-#     squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-#                *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-#                *list(range(139, 143))
-#                ]
-#
-#     samples = []
-#     labels = []
-#     for nc_file in os.listdir(data_dir):
-#         print(data_dir + nc_file)
-#         nc = NCFile(data_dir + nc_file)
-#         conc = nc.variables['iceconc'][:][0]
-#         thic = nc.variables['icethic_cea'][:][0]
-#         nc.close()
-#         real_idx = 0
-#         for y in range(0, 400, 50):
-#             for x in range(0, 1100, 50):
-#                 if real_idx in squares:
-#                     square_conc = conc[y:y + 50, x:x + 50]
-#                     square_thic = thic[y:y + 50, x:x + 50]
-#                     reshaped = np.append(square_conc.flatten(), square_thic.flatten())
-#                     samples.append(reshaped)
-#                     labels.append(squares.index(real_idx))
-#                 real_idx += 1
-#
-#     clf = tree.DecisionTreeClassifier()
-#     clf = clf.fit(samples, labels)
-#     joblib.dump(clf, 'samples/tree.pkl')
-#
+def tree_classification():
+    good_dir = "samples/ice_tests/good/2013"
+    bad_dir = "samples/ice_tests/bad/"
 
-# draw_ice_levels("samples/ice_data/ARCTIC_1h_ice_grid_TUV_20000731-20000731.nc_1.nc")
-draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130920-20130920.nc_1.nc")
+    files = []
+
+    # label good data
+    for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
+        files.append([os.path.normpath(file_name), 0])
+
+    # label bad data
+    for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
+        files.append([os.path.normpath(file_name), 1])
+
+    squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+               *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+               *list(range(139, 143))
+               ]
+    levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
+              [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
+              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)),
+               *list(range(80, 86))],
+              [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
+
+    clf = joblib.load('samples/tree.pkl')
+
+    real = []
+    score = []
+
+    for file in files:
+        nc = NCFile(file[0])
+        conc = nc.variables['iceconc'][:][0]
+        thic = nc.variables['icethic_cea'][:][0]
+        nc.close()
+
+        samples = []
+        labels = []
+
+        real_idx = 0
+        for y in range(0, 400, 50):
+            for x in range(0, 1100, 50):
+                if real_idx in squares:
+                    square_conc = conc[y:y + 50, x:x + 50]
+                    square_thic = thic[y:y + 50, x:x + 50]
+                    reshaped = np.append(square_conc.flatten(), square_thic.flatten())
+                    samples.append(reshaped)
+                    labels.append(squares.index(real_idx))
+                real_idx += 1
+
+        predicted = clf.predict(samples)
+        good_amount = 0
+        for idx in range(len(samples)):
+            predicted_index = predicted[idx]
+            real_idx = labels[idx]
+
+            good = False
+            if predicted_index == real_idx:
+                good = True
+            else:
+                for level in levels:
+                    if predicted_index in level and real_idx in level:
+                        good = True
+
+            if good:
+                good_amount += 1
+            # out = True
+            # if predicted_index != real_idx:
+            #     for level in levels:
+            #         if predicted_index in level and real_idx in level:
+            #             out = False
+            # else:
+            #     out = False
+            # if out:
+            #     out_amount += 1
+
+        val = good_amount / len(samples)
+        real.append(file[1])
+        score.append(val)
+        # score.append(1.0)
+
+    fpr, tpr, _ = roc_curve(real, score)
+    roc_auc = auc(fpr, tpr)
+    print('AUC: %f' % roc_auc)
+
+    plt.figure()
+    plt.plot(fpr, tpr)
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+
+    plt.show()
+
+
+def fit_tree():
+    data_dir = "samples/ice_data/"
+
+    squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+               *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+               *list(range(139, 143))
+               ]
+
+    samples = []
+    labels = []
+    for nc_file in os.listdir(data_dir):
+        print(data_dir + nc_file)
+        nc = NCFile(data_dir + nc_file)
+        conc = nc.variables['iceconc'][:][0]
+        thic = nc.variables['icethic_cea'][:][0]
+        nc.close()
+        real_idx = 0
+        for y in range(0, 400, 50):
+            for x in range(0, 1100, 50):
+                if real_idx in squares:
+                    square_conc = conc[y:y + 50, x:x + 50]
+                    square_thic = thic[y:y + 50, x:x + 50]
+                    reshaped = np.append(square_conc.flatten(), square_thic.flatten())
+                    samples.append(reshaped)
+                    labels.append(squares.index(real_idx))
+                real_idx += 1
+
+    clf = tree.DecisionTreeClassifier()
+    clf = clf.fit(samples, labels)
+    joblib.dump(clf, 'samples/tree.pkl')
+
+
+# draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
+# draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -661,6 +749,8 @@ draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130920
 # detector = IceDetector(0.5)
 # print(detector.detect("samples/ice_bad_bad/4/ARCTIC_1h_ice_grid_TUV_20010806-20010806.nc"))
 
-#test_detector()
+test_detector()
 
+# fit_tree()
 # tree_classification()
+# visualize_tree_classification("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")

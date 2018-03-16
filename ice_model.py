@@ -287,8 +287,8 @@ def ocean_only():
 
     print(len(train))
     print(len(test))
-    train_batch_size = 80
-    test_batch_size = 60
+    train_batch_size = 120
+    test_batch_size = 30
 
     train_idx = []
     for sample in train:
@@ -310,7 +310,7 @@ def ocean_only():
 
     print(train_idx)
 
-    epochs = 20
+    epochs = 50
 
     container = VarsContainer()
 
