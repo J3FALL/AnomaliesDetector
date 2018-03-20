@@ -86,7 +86,7 @@ class IceSample:
 class IceDetector:
     def __init__(self, alpha):
         self.alpha = alpha
-        self.model = load_model("samples/ocean_only_model.h5")
+        self.model = load_model("samples/advanced_ocean_only_model.h5")
 
         # ocean squares
         self.squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
@@ -352,7 +352,7 @@ def draw_ice_ocean_only(file_name):
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
-    model = load_model("samples/ocean_only_model.h5")
+    model = load_model("samples/advanced_ocean_only_model.h5")
     squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
                *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
                *list(range(139, 143))
@@ -737,7 +737,7 @@ def fit_tree():
 
 
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
+draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130919-20130919.nc_1.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -749,7 +749,8 @@ def fit_tree():
 # detector = IceDetector(0.5)
 # print(detector.detect("samples/ice_bad_bad/4/ARCTIC_1h_ice_grid_TUV_20010806-20010806.nc"))
 
-test_detector()
+#
+# test_detector()
 
 # fit_tree()
 # tree_classification()

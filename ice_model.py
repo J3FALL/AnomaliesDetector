@@ -1,5 +1,7 @@
 import keras
 import numpy as np
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
@@ -37,7 +39,7 @@ def init_model():
     return model
 
 
-def init_ocean_model(num_squares):
+def init_basic_ocean_model(num_squares):
     input_shape = (50, 50, 2)
 
     model = Sequential()
@@ -47,6 +49,31 @@ def init_ocean_model(num_squares):
     model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
     model.add(Conv2D(64, (5, 5), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Flatten())
+    model.add(Dense(1000, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(num_squares, activation='softmax'))
+
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.Adam(),
+                  metrics=['accuracy'])
+
+    return model
+
+
+def init_advanced_ocean_model(num_squares):
+    input_shape = (50, 50, 2)
+
+    model = Sequential()
+    model.add(Conv2D(512, kernel_size=(2, 2), strides=(1, 1),
+                     activation='relu',
+                     input_shape=input_shape))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+    model.add(Conv2D(256, kernel_size=(5, 5), strides=(1, 1),
+                     activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+    model.add(Conv2D(256, (10, 10), activation='relu'))
+    # model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Flatten())
     model.add(Dense(1000, activation='relu'))
     model.add(Dropout(0.5))
@@ -283,30 +310,30 @@ def small_grid():
 
 def ocean_only():
     data = read_samples("samples/ice_samples_ocean_only.csv")
-    train, test = split_data(data.samples, 0.2)
+    train, test = split_data(data.samples, 0.0)
 
     print(len(train))
     print(len(test))
-    train_batch_size = 120
-    test_batch_size = 30
+    train_batch_size = 100
+    test_batch_size = 20
 
     train_idx = []
     for sample in train:
         train_idx.append(squares.index(sample.index - 1))
     train_idx = keras.utils.to_categorical(train_idx, len(squares))
 
-    test_idx = []
-    for sample in test:
-        test_idx.append(squares.index(sample.index - 1))
-    test_idx = keras.utils.to_categorical(test_idx, len(squares))
+    # test_idx = []
+    # for sample in test:
+    #     test_idx.append(squares.index(sample.index - 1))
+    # test_idx = keras.utils.to_categorical(test_idx, len(squares))
 
     tr_samples = []
     for idx in range(len(train)):
         tr_samples.append([train[idx], train_idx[idx]])
 
-    tt_samples = []
-    for idx in range(len(test)):
-        tt_samples.append([test[idx], test_idx[idx]])
+    # tt_samples = []
+    # for idx in range(len(test)):
+    #     tt_samples.append([test[idx], test_idx[idx]])
 
     print(train_idx)
 
@@ -314,20 +341,25 @@ def ocean_only():
 
     container = VarsContainer()
 
-    model = init_ocean_model(91)
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    set_session(tf.Session(config=config))
+
+    model = init_advanced_ocean_model(91)
+
     history = AccuracyHistory()
     model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/ocean_only_model.h5")
+    model.save("samples/advanced_ocean_only_model.h5")
     # model = load_model("samples/model.h5")
     # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
     #                                  steps=int(len(test) / test_batch_size))
 
-    t = model.evaluate_generator(ocean_data_generator(tt_samples, test_batch_size, container),
-                                 steps=int(len(test) / test_batch_size))
-    print(t)
+    # t = model.evaluate_generator(ocean_data_generator(tt_samples, test_batch_size, container),
+    #                              steps=int(len(test) / test_batch_size))
+    # print(t)
 
 
 ocean_only()
