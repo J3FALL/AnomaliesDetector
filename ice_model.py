@@ -2,22 +2,27 @@ import keras
 import numpy as np
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
-from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Conv2D
 from keras.layers import Dense, Flatten, Dropout
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
 from keras.models import Sequential
 from netCDF4 import Dataset as NCFile
 from sklearn.model_selection import train_test_split
+from random import shuffle
 
 from ice_data import Dataset
+from ice_data import SQUARE_SIZE
 
-squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-           *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-           *list(range(139, 143))
-           ]
+# squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+#            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+#            *list(range(139, 143))
+#            ]
+
+squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
 
 
 def init_model():
-    input_shape = (50, 50, 3)
+    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 3)
     num_squares = 176
 
     model = Sequential()
@@ -33,7 +38,7 @@ def init_model():
     model.add(Dense(num_squares, activation='softmax'))
 
     model.compile(loss=keras.losses.categorical_crossentropy,
-                  optimizer=keras.optimizers.Adam(),
+                  optimizer=keras.optimizers.SGD(),
                   metrics=['accuracy'])
 
     return model
@@ -62,10 +67,10 @@ def init_basic_ocean_model(num_squares):
 
 
 def init_advanced_ocean_model(num_squares):
-    input_shape = (50, 50, 2)
+    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 3)
 
     model = Sequential()
-    model.add(Conv2D(512, kernel_size=(2, 2), strides=(1, 1),
+    model.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1),
                      activation='relu',
                      input_shape=input_shape))
     model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
@@ -75,12 +80,67 @@ def init_advanced_ocean_model(num_squares):
     model.add(Conv2D(256, (10, 10), activation='relu'))
     # model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Flatten())
-    model.add(Dense(1000, activation='relu'))
+    model.add(Dense(2000, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(2000, activation='relu'))
     model.add(Dropout(0.5))
     model.add(Dense(num_squares, activation='softmax'))
 
     model.compile(loss=keras.losses.categorical_crossentropy,
                   optimizer=keras.optimizers.Adam(),
+                  metrics=['accuracy'])
+
+    return model
+
+
+def VGG(num_squares):
+    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 2)
+    model = Sequential()
+    model.add(ZeroPadding2D((1, 1), input_shape=input_shape))
+    model.add(Convolution2D(64, 3, 3, activation='relu'))
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(64, 3, 3, activation='relu'))
+    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(128, 3, 3, activation='relu'))
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(128, 3, 3, activation='relu'))
+    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(256, 3, 3, activation='relu'))
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(256, 3, 3, activation='relu'))
+    model.add(ZeroPadding2D((1, 1)))
+    model.add(Convolution2D(256, 3, 3, activation='relu'))
+    model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(ZeroPadding2D((1, 1)))
+    # model.add(Convolution2D(512, 3, 3, activation='relu'))
+    # model.add(MaxPooling2D((2, 2), strides=(2, 2)))
+
+    model.add(Flatten())
+    model.add(Dense(4096, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(4096, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(num_squares, activation='softmax'))
+
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.SGD(),
                   metrics=['accuracy'])
 
     return model
@@ -121,7 +181,7 @@ class VarsContainer:
             nc = NCFile(file_name)
             conc = nc.variables['iceconc'][:]
             thic = nc.variables['icethic_cea'][:]
-
+            # thic = self.normalize(thic)
             self.conc_dic[file_name] = conc
             self.thic_dic[file_name] = thic
 
@@ -137,6 +197,9 @@ class VarsContainer:
 
         else:
             return self.conc_dic[file_name], self.thic_dic[file_name]
+
+    def normalize(self, data):
+        return data / np.max(data)
 
 
 def data_generator(samples, batch_size, vars_container, full_mask):
@@ -164,13 +227,20 @@ def data_generator(samples, batch_size, vars_container, full_mask):
 def ocean_data_generator(samples, batch_size, vars_container):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
-            x = np.zeros((batch_size, 50, 50, 2), dtype=np.float32)
-            y = np.zeros((batch_size, 91))
-            for index in range(sample_index, sample_index + batch_size):
+            x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 2), dtype=np.float32)
+            y = np.zeros((batch_size, 17))
+
+            if sample_index + batch_size > len(samples):
+                offset = len(samples) - sample_index
+            else:
+                offset = batch_size
+            for index in range(sample_index, sample_index + offset):
                 nc_file = samples[index][0].nc_file
                 conc, thic = vars_container.values(nc_file)
                 ice_square = samples[index][0].ice_conc(conc)
                 thic_square = samples[index][0].ice_thic(thic)
+                # if not np.max(thic_square) == 0.0:
+                #     thic_square = thic_square / np.max(thic_square)
 
                 combined = np.stack(arrays=[ice_square, thic_square], axis=2)
                 x[index - sample_index] = combined
@@ -205,7 +275,7 @@ def big_grid():
     # test_batch_size = calc_batch_size(len(test), int(test_middle - 0.5 * test_middle),
     #                                   int(test_middle + 0.5 * test_middle))
 
-    train_batch_size = 80
+    train_batch_size = 50
     test_batch_size = 80
     print(len(train))
     print(len(test))
@@ -309,14 +379,14 @@ def small_grid():
 
 
 def ocean_only():
-    data = read_samples("samples/ice_samples_ocean_only.csv")
+    data = read_samples("samples/ice_borders_only.csv")
     train, test = split_data(data.samples, 0.0)
 
     print(len(train))
     print(len(test))
-    train_batch_size = 100
+    train_batch_size = 50
     test_batch_size = 20
-
+    shuffle(train)
     train_idx = []
     for sample in train:
         train_idx.append(squares.index(sample.index - 1))
@@ -337,7 +407,7 @@ def ocean_only():
 
     print(train_idx)
 
-    epochs = 50
+    epochs = 15
 
     container = VarsContainer()
 
@@ -345,14 +415,14 @@ def ocean_only():
     config.gpu_options.visible_device_list = "1"
     set_session(tf.Session(config=config))
 
-    model = init_advanced_ocean_model(91)
-
+    # model = init_advanced_ocean_model(11)
+    model = VGG(17)
     history = AccuracyHistory()
     model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/advanced_ocean_only_model.h5")
+    model.save("samples/ice_borders_only.h5")
     # model = load_model("samples/model.h5")
     # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
     #                                  steps=int(len(test) / test_batch_size))

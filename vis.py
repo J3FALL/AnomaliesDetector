@@ -7,7 +7,7 @@ from keras.models import load_model
 from matplotlib.patches import Polygon
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NetCDFFile
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import data
 import image as img
 
@@ -76,44 +76,32 @@ def draw_velocity_map(nc_file_name):
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
     plt.colorbar()
-    plt.title(nc_file_name)
+    plt.title("Outlier detection results for: " + "ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")
     model = load_model("samples/model.h5")
+    valid_squares = [[*list(range(1, 10))]]
     with open("samples/valid_samples.csv", 'r', newline='') as csvfile:
         samples = []
+
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
             if "samples/bad/vel/" + nc_name in row[0]:
                 print(row)
                 samples.append(row)
                 square_index = data.extract_square_index(row[0])
+
                 x = int(square_index.split("_")[0])
                 y = int(square_index.split("_")[1])
 
-                sample = np.zeros((1, 100, 100, 1), dtype=np.float32)
-                square = np.expand_dims(img.load_square_from_file(row[0]), axis=2)
-                sample[0] = square
-                result = model.predict(sample)
-                result_x, result_y = m(lon[y + 50][x + 50], lat[y + 50][x + 50])
+                if (x >= 100) and (x < 1000) and (y < 300):
 
-                plt.text(result_x, result_y, str(result[0][0]), ha='center', size=10, color="yellow")
-                if row[1] == "1":
-                    print("outlier!")
-                    lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
-                    lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
-                    mapx, mapy = m(lon_poly, lat_poly)
-                    points = np.zeros((4, 2), dtype=np.float32)
-                    for j in range(0, 4):
-                        points[j][0] = mapx[j]
-                        points[j][1] = mapy[j]
-
-                    if result[0][0] > 0.5:
-                        poly = Polygon(points, facecolor='yellow', alpha=0.4)
-                        plt.gca().add_patch(poly)
-                    else:
-                        poly = Polygon(points, facecolor='red', alpha=0.4)
-                        plt.gca().add_patch(poly)
-                else:
-                    if result[0][0] > 0.5:
+                    sample = np.zeros((1, 100, 100, 1), dtype=np.float32)
+                    square = np.expand_dims(img.load_square_from_file(row[0]), axis=2)
+                    sample[0] = square
+                    result = model.predict(sample)
+                    result_x, result_y = m(lon[y + 50][x + 50], lat[y + 50][x + 50])
+                    plt.text(result_x, result_y, str(result[0][0]), ha='center', size=10, color="yellow")
+                    if row[1] == "1":
+                        print("outlier!")
                         lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
                         lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
                         mapx, mapy = m(lon_poly, lat_poly)
@@ -121,10 +109,26 @@ def draw_velocity_map(nc_file_name):
                         for j in range(0, 4):
                             points[j][0] = mapx[j]
                             points[j][1] = mapy[j]
-                        poly = Polygon(points, facecolor='green', alpha=0.4)
-                        plt.gca().add_patch(poly)
 
-                print(result)
+                        if result[0][0] > 0.5:
+                            poly = Polygon(points, facecolor='yellow', alpha=0.4)
+                            plt.gca().add_patch(poly)
+                        else:
+                            poly = Polygon(points, facecolor='red', alpha=0.4)
+                            plt.gca().add_patch(poly)
+                    else:
+                        if result[0][0] > 0.5:
+                            lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
+                            lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
+                            mapx, mapy = m(lon_poly, lat_poly)
+                            points = np.zeros((4, 2), dtype=np.float32)
+                            for j in range(0, 4):
+                                points[j][0] = mapx[j]
+                                points[j][1] = mapy[j]
+                            poly = Polygon(points, facecolor='green', alpha=0.4)
+                            plt.gca().add_patch(poly)
+
+                    print(result)
 
     plt.show()
 
@@ -173,7 +177,7 @@ def draw_velocity_map_with_level(nc_file_name, level):
             result = model.predict(sample)
             result_x, result_y = m(lon[y + 50][x + 50], lat[y + 50][x + 50])
             max_x, max_y = m(lon[y + 70][x + 50], lat[y + 70, x + 50])
-            plt.text(result_x, result_y, str(result[0][0]), ha='center', size=10, color="yellow")
+            plt.text(result_x, result_y, str(result[0][0]), ha='center', size=10, color="yellow", bbox=dict(facecolor='black', alpha=0.5, edgecolor='black'))
             plt.text(max_x, max_y, np.max(sample[0]), ha='center', size=10, color="yellow")
             if result[0][0] > 0.5:
                 lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
@@ -189,5 +193,5 @@ def draw_velocity_map_with_level(nc_file_name, level):
     plt.show()
 
 
-draw_velocity_map_with_level("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc", 15)
-# draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")
+# draw_velocity_map_with_level("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc", 15)
+draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")

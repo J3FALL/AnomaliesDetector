@@ -214,7 +214,7 @@ def run_default_model():
     model.fit_generator(data_generator(train, train_batch_size),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
-                        epochs=10)
+                        epochs=3)
 
     model.save("samples/model.h5")
 

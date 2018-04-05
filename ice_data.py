@@ -3,6 +3,11 @@ import glob
 import os
 
 import keras
+import matplotlib
+import matplotlib.patheffects as PathEffects
+
+matplotlib.use('agg')
+
 import matplotlib.pyplot as plt
 import numpy as np
 from keras.models import load_model
@@ -12,6 +17,19 @@ from netCDF4 import Dataset as NCFile
 from sklearn import tree
 from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+SQUARE_SIZE = 100
+IMAGE_SIZE = {
+    'x': 1100,
+    'y': 400
+}
+
+config = tf.ConfigProto()
+config.gpu_options.visible_device_list = "1"
+set_session(tf.Session(config=config))
 
 
 class Dataset:
@@ -53,7 +71,7 @@ class IceSample:
         self.label = label
 
     def get_borders(self):
-        x, y = divmod(self.index - 1, 22)
+        x, y = divmod(self.index - 1, int(IMAGE_SIZE['x'] / SQUARE_SIZE))
         return x, y
 
     def ice_conc(self, var):
@@ -86,46 +104,48 @@ class IceSample:
 class IceDetector:
     def __init__(self, alpha):
         self.alpha = alpha
-        self.model = load_model("samples/advanced_ocean_only_model.h5")
+        self.model = load_model("samples/ice_borders_only.h5")
 
         # ocean squares
-        self.squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-                        *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-                        *list(range(139, 143))
-                        ]
+        self.squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+
         # levels of ice
-        self.levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
-                       [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
-                       [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)),
-                        *list(range(80, 86))],
-                       [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
+        self.levels = [[0, 6], [1, 7, 5], [8, 9]]
 
     def detect(self, file_name):
         nc = NCFile(file_name)
         conc = nc.variables['iceconc'][:][0]
         thic = nc.variables['icethic_cea'][:][0]
+
         nc.close()
 
-        samples = np.zeros((len(self.squares), 50, 50, 2))
-        square_idxs = np.zeros((len(self.squares)))
         real_idx = 0
-        sample_idx = 0
-        for y in range(0, 400, 50):
-            for x in range(0, 1100, 50):
-                if real_idx in self.squares:
-                    combined = np.stack(arrays=[conc[y:y + 50, x:x + 50], thic[y:y + 50, x:x + 50]], axis=2)
-                    samples[sample_idx] = combined
-                    square_idxs[sample_idx] = self.squares.index(real_idx)
-                    sample_idx += 1
-                real_idx += 1
-        results = self.model.predict(samples)
-
         good_amount = 0
-        for idx in range(len(samples)):
-            predicted_index = np.argmax(results[idx])
-            real_idx = square_idxs[idx]
-            if not self.is_outlier(predicted_index, real_idx):
-                good_amount += 1
+
+        for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+            for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+                if real_idx in self.squares:
+                    sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 2))
+                    thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+                    combined = np.stack(
+                        arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE], thic_square],
+                        axis=2)
+                    sample[0] = combined
+                    result = self.model.predict(sample)
+                    predicted_index = np.argmax(result[0])
+
+                    if predicted_index == self.squares.index(real_idx):
+                        good_amount += 1
+                    else:
+                        out = True
+                        for level in self.levels:
+                            if predicted_index in level and self.squares.index(real_idx) in level:
+                                out = False
+
+                        if not out:
+                            good_amount += 1
+
+                real_idx += 1
 
         prediction = 1 if good_amount / len(self.squares) > self.alpha else 0
 
@@ -157,7 +177,7 @@ def construct_ice_dataset():
         # each square contains data for [0..24] hours
         for square_index in range(1, squares_amount + 1):
             for time in range(times_amount):
-                dataset.samples.append(IceSample(data_dir + nc_file, square_index, size, time, 0))
+                dataset.samples.append(IceSample(nc_file, square_index, size, time, 0))
     dataset.dump_to_csv()
 
 
@@ -191,12 +211,29 @@ def construct_ice_dataset_ocean_only():
                *list(range(139, 143))
                ]
 
-    for nc_file in os.listdir(data_dir):
+    for nc_file in glob.iglob(data_dir + "**/*.nc", recursive=True):
         # open NetCDF, slice it to samples with size = (100, 100)
         # each square contains data for [0..24] hours
         for square_index in squares:
             for time in range(times_amount):
-                dataset.samples.append(IceSample(data_dir + nc_file, square_index + 1, size, time, 0))
+                dataset.samples.append(IceSample(nc_file, square_index + 1, size, time, 0))
+    dataset.dump_to_csv()
+
+
+def construct_ice_borders_dataset():
+    dataset = Dataset("samples/ice_borders_only.csv")
+    data_dir = "samples/ice_data/"
+
+    # times_amount = 24
+
+    squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+    print(squares)
+    times = [0, 8, 16]
+    for nc_file in glob.iglob(data_dir + "**/*.nc", recursive=True):
+        for square_index in squares:
+            for time in times:
+                dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, time, 0))
+
     dataset.dump_to_csv()
 
 
@@ -334,6 +371,7 @@ def draw_ice_ocean_only(file_name):
     lon = nc.variables['nav_lon'][:]
     conc = nc.variables['iceconc'][:][0]
     thic = nc.variables['icethic_cea'][:][0]
+
     nc.close()
 
     lat_left_bottom = lat[-1][-1]
@@ -347,70 +385,92 @@ def draw_ice_ocean_only(file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, thic, latlon=True, cmap='jet')
+    m.pcolormesh(lon, lat, thic, latlon=True, cmap='RdYlBu_r', vmax=3)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
-    model = load_model("samples/advanced_ocean_only_model.h5")
-    squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-               *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-               *list(range(139, 143))
-               ]
-    levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
-              [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
-              [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
-              [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
-
+    model = load_model("samples/ice_borders_only.h5")
+    # squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
+    #            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
+    #            *list(range(139, 143))
+    #            ]
+    squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+    levels = [[0, 6], [1, 7, 5], [8, 9]]
+    # levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
+    #           [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
+    #           [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
+    #           [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
+    # levels = [list(range(0, 3)), [*list(range(8, 15))], [*list(range(20, 24))]]
     real_idx = 0
-    for y in range(0, 400, 50):
-        for x in range(0, 1100, 50):
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
             if real_idx in squares:
-                sample = np.zeros((1, 50, 50, 2))
+                sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 2))
+
+                thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+                # thic_square = thic_square / np.max(thic_square)
                 combined = np.stack(
-                    arrays=[conc[y:y + 50, x:x + 50], thic[y:y + 50, x:x + 50]],
+                    arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE], thic_square],
                     axis=2)
                 sample[0] = combined
                 result = model.predict(sample)
                 predicted_index = np.argmax(result[0])
 
-                result_x, result_y = m(lon[y + 15][x + 25], lat[y + 15][x + 25])
-                plt.text(result_x, result_y, str(predicted_index), ha='center', size=7, color="yellow")
-                result_x, result_y = m(lon[y + 30][x + 25], lat[y + 30][x + 25])
-                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=7, color="yellow")
-                result_x, result_y = m(lon[y + 45][x + 25], lat[y + 45][x + 25])
-                plt.text(result_x, result_y, str(result[0][predicted_index]), ha='center', size=7, color="yellow")
+                y_offset = int(SQUARE_SIZE / 4)
+                x_offset = int(SQUARE_SIZE / 2)
+                result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(predicted_index), ha='center', size=5, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 2 * y_offset][x + x_offset], lat[y + 2 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=5, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 3 * y_offset][x + x_offset], lat[y + 3 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=5,
+                         color="yellow", path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
 
-                lat_poly = np.array([lat[y][x], lat[y][x + 49], lat[y + 49][x + 49], lat[y + 49][x]])
-                lon_poly = np.array([lon[y][x], lon[y][x + 49], lon[y + 49][x + 49], lon[y + 49][x]])
+                lat_poly = np.array(
+                    [lat[y][x], lat[y][x + SQUARE_SIZE - 1], lat[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lat[y + SQUARE_SIZE - 1][x]])
+                lon_poly = np.array(
+                    [lon[y][x], lon[y][x + SQUARE_SIZE - 1], lon[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lon[y + SQUARE_SIZE - 1][x]])
                 mapx, mapy = m(lon_poly, lat_poly)
                 points = np.zeros((4, 2), dtype=np.float32)
                 for j in range(0, 4):
                     points[j][0] = mapx[j]
                     points[j][1] = mapy[j]
-
-                if predicted_index != squares.index(real_idx):
+                if predicted_index == squares.index(real_idx):
+                    poly = Polygon(points, color='green', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+                else:
                     out = True
                     for level in levels:
                         if predicted_index in level and squares.index(real_idx) in level:
                             out = False
 
                     if out:
-                        poly = Polygon(points, facecolor='red', alpha=0.6)
+                        poly = Polygon(points, color='red', fill=False, linewidth=3)
                         plt.gca().add_patch(poly)
                     else:
-                        poly = Polygon(points, facecolor='yellow', alpha=0.6)
+                        poly = Polygon(points, color='yellow', fill=False, linewidth=3)
                         plt.gca().add_patch(poly)
-                else:
-                    poly = Polygon(points, facecolor='green', alpha=0.6)
-                    plt.gca().add_patch(poly)
 
             real_idx += 1
 
-    plt.colorbar()
-    plt.title(file_name)
+    # plt.rcParams["figure.figsize"] = [5, 5]
+    ax = plt.gca()
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
 
-    plt.show()
+    plt.colorbar(cax=cax, label="Ice thickness [m]")
+    # plt.title("Outlier detection results for : ARCTIC_1h_ice_grid_TUV_20130912-20130912.nc_1.nc", fontsize=10, loc='left')
+
+    # red = mpatches.Patch(color='red', label='Outlier')
+    # yellow = mpatches.Patch(color='yellow', label='Rather correct')
+    # green = mpatches.Patch(color='green', label='Correct')
+    # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
+    plt.savefig("ice_tests.png", dpi=500)
 
 
 def draw_ice_levels(file_name):
@@ -605,7 +665,8 @@ def test_detector():
     plt.ylabel('True Positive Rate')
     plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
 
-    plt.show()
+    # plt.show()
+    plt.savefig("ice_results.png", dpi=500)
 
 
 def tree_classification():
@@ -736,8 +797,9 @@ def fit_tree():
     joblib.dump(clf, 'samples/tree.pkl')
 
 
+test_detector()
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130919-20130919.nc_1.nc")
+# draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120908-20120908.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -755,3 +817,5 @@ draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130919
 # fit_tree()
 # tree_classification()
 # visualize_tree_classification("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
+
+# construct_ice_borders_dataset()
