@@ -163,42 +163,6 @@ class IceDetector:
         return out
 
 
-def construct_ice_dataset():
-    dataset = Dataset("samples/ice_samples.csv")
-
-    data_dir = "samples/ice_data/"
-
-    size = 100
-    squares_amount = 44
-    times_amount = 24
-
-    for nc_file in os.listdir(data_dir):
-        # open NetCDF, slice it to samples with size = (100, 100)
-        # each square contains data for [0..24] hours
-        for square_index in range(1, squares_amount + 1):
-            for time in range(times_amount):
-                dataset.samples.append(IceSample(nc_file, square_index, size, time, 0))
-    dataset.dump_to_csv()
-
-
-def construct_ice_dataset_with_small_grid():
-    dataset = Dataset("samples/ice_samples_small_grid.csv")
-
-    data_dir = "samples/ice_data/"
-
-    size = 50
-    squares_amount = 176
-    times_amount = 24
-
-    for nc_file in os.listdir(data_dir):
-        # open NetCDF, slice it to samples with size = (100, 100)
-        # each square contains data for [0..24] hours
-        for square_index in range(1, squares_amount + 1):
-            for time in range(times_amount):
-                dataset.samples.append(IceSample(data_dir + nc_file, square_index, size, time, 0))
-    dataset.dump_to_csv()
-
-
 def construct_ice_dataset_ocean_only():
     dataset = Dataset("samples/ice_samples_ocean_only.csv")
 
@@ -220,11 +184,9 @@ def construct_ice_dataset_ocean_only():
     dataset.dump_to_csv()
 
 
-def construct_ice_borders_dataset():
-    dataset = Dataset("samples/ice_borders_only.csv")
+def construct_ice_dataset():
+    dataset = Dataset("samples/ice_nemo.csv")
     data_dir = "samples/ice_data/"
-
-    # times_amount = 24
 
     squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
     print(squares)
@@ -797,7 +759,6 @@ def fit_tree():
     joblib.dump(clf, 'samples/tree.pkl')
 
 
-test_detector()
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
 # draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120908-20120908.nc")
 # construct_ice_dataset()
@@ -818,4 +779,4 @@ test_detector()
 # tree_classification()
 # visualize_tree_classification("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
 
-# construct_ice_borders_dataset()
+construct_ice_dataset()
