@@ -104,13 +104,15 @@ class IceSample:
 class IceDetector:
     def __init__(self, alpha):
         self.alpha = alpha
-        self.model = load_model("samples/ice_borders_only.h5")
+        self.model = load_model("samples/conc_model.h5")
 
         # ocean squares
         self.squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
 
         # levels of ice
-        self.levels = [[0, 6], [1, 7, 5], [8, 9]]
+        # self.levels = [[0, 6], [1, 7, 5], [8, 9]]
+
+        self.levels = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
 
     def detect(self, file_name):
         nc = NCFile(file_name)
@@ -122,13 +124,15 @@ class IceDetector:
         real_idx = 0
         good_amount = 0
 
+        # TODO: add list as params [conc, thic, etc]
         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
                 if real_idx in self.squares:
-                    sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 2))
+                    sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
                     thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+                    conc_square = conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
                     combined = np.stack(
-                        arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE], thic_square],
+                        arrays=[conc_square],
                         axis=2)
                     sample[0] = combined
                     result = self.model.predict(sample)
@@ -137,12 +141,15 @@ class IceDetector:
                     if predicted_index == self.squares.index(real_idx):
                         good_amount += 1
                     else:
-                        out = True
-                        for level in self.levels:
-                            if predicted_index in level and self.squares.index(real_idx) in level:
-                                out = False
+                        if any(predicted_index in sublist for sublist in self.levels):
+                            out = True
+                            for level in self.levels:
+                                if predicted_index in level and self.squares.index(real_idx) in level:
+                                    out = False
 
-                        if not out:
+                            if not out:
+                                good_amount += 1
+                        else:
                             good_amount += 1
 
                 real_idx += 1
@@ -185,17 +192,20 @@ def construct_ice_dataset_ocean_only():
 
 
 def construct_ice_dataset():
-    dataset = Dataset("samples/ice_nemo.csv")
+    dataset = Dataset("samples/ice_nemo_and_sat.csv")
     data_dir = "samples/ice_data/"
 
     squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
     print(squares)
-    times = [0, 8, 16]
+    times = [0]
     for nc_file in glob.iglob(data_dir + "**/*.nc", recursive=True):
         for square_index in squares:
             for time in times:
-                dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, time, 0))
-
+                if "satellite" in nc_file:
+                    if time == 0:
+                        dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, 0, 0))
+                else:
+                    dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, time, 0))
     dataset.dump_to_csv()
 
 
@@ -331,8 +341,13 @@ def draw_ice_ocean_only(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
-    conc = nc.variables['iceconc'][:][0]
-    thic = nc.variables['icethic_cea'][:][0]
+
+    if "SAT" in file_name:
+        conc = nc.variables['ice_conc'][:][0]
+        thic = np.empty((1, 400, 100), np.float32)
+    else:
+        conc = nc.variables['iceconc'][:][0]
+        thic = nc.variables['icethic_cea'][:][0]
 
     nc.close()
 
@@ -347,12 +362,12 @@ def draw_ice_ocean_only(file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, thic, latlon=True, cmap='RdYlBu_r', vmax=3)
+    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=3)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
-    model = load_model("samples/ice_borders_only.h5")
+    model = load_model("samples/conc_model.h5")
     # squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
     #            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
     #            *list(range(139, 143))
@@ -368,12 +383,12 @@ def draw_ice_ocean_only(file_name):
     for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
         for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
             if real_idx in squares:
-                sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 2))
+                sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
 
-                thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
-                # thic_square = thic_square / np.max(thic_square)
+                # thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+
                 combined = np.stack(
-                    arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE], thic_square],
+                    arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
                     axis=2)
                 sample[0] = combined
                 result = model.predict(sample)
@@ -597,11 +612,14 @@ def test_detector():
 
     # label good data
     for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
-        samples.append([os.path.normpath(file_name), 0])
+        samples.append([os.path.normpath(file_name), 1])
 
+    print(len(samples))
     # label bad data
     for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
-        samples.append([os.path.normpath(file_name), 1])
+        samples.append([os.path.normpath(file_name), 0])
+
+    print(len(samples))
 
     detector = IceDetector(0.1)
     results = np.zeros((len(samples), 2))
@@ -614,9 +632,34 @@ def test_detector():
         results[idx][1] = sample[1]
         idx += 1
 
-    fpr, tpr, _ = roc_curve(results[:, 1], results[:, 0])
-    roc_auc = auc(fpr, tpr)
-    print('AUC: %f' % roc_auc)
+    # TODO: add function for roc calculation
+    tpr = []
+    fpr = []
+
+    for barrier in np.arange(0.0, 1.0, 0.01):
+        tp = 0
+        tn = 0
+        fp = 0
+        fn = 0
+        for index in range(0, len(results)):
+            if results[index][0] > barrier:
+                if results[index][1] == 1:
+                    tp += 1
+                else:
+                    fp += 1
+            else:
+                if results[index][1] == 0:
+                    tn += 1
+                else:
+                    fn += 1
+        tpr.append(tp / (tp + fn))
+        fpr.append(fp / (fp + tn))
+
+    print(tpr)
+    print(fpr)
+    # fpr, tpr, _ = roc_curve(results[:, 1], results[:, 0])
+    # roc_auc = auc(fpr, tpr)
+    # print('AUC: %f' % roc_auc)
 
     plt.figure()
     plt.plot(fpr, tpr)
@@ -625,7 +668,7 @@ def test_detector():
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+    # plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
 
     # plt.show()
     plt.savefig("ice_results.png", dpi=500)
@@ -760,7 +803,7 @@ def fit_tree():
 
 
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120908-20120908.nc")
+# draw_ice_ocean_only("samples/SAT_201309_avg.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -773,10 +816,10 @@ def fit_tree():
 # print(detector.detect("samples/ice_bad_bad/4/ARCTIC_1h_ice_grid_TUV_20010806-20010806.nc"))
 
 #
-# test_detector()
+test_detector()
 
 # fit_tree()
 # tree_classification()
 # visualize_tree_classification("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
 
-construct_ice_dataset()
+# construct_ice_dataset()

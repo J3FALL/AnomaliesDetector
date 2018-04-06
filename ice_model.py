@@ -1,3 +1,5 @@
+from random import shuffle
+
 import keras
 import numpy as np
 import tensorflow as tf
@@ -8,7 +10,6 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2
 from keras.models import Sequential
 from netCDF4 import Dataset as NCFile
 from sklearn.model_selection import train_test_split
-from random import shuffle
 
 from ice_data import Dataset
 from ice_data import SQUARE_SIZE
@@ -94,7 +95,7 @@ def init_advanced_ocean_model(num_squares):
 
 
 def VGG(num_squares):
-    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 2)
+    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 1)
     model = Sequential()
     model.add(ZeroPadding2D((1, 1), input_shape=input_shape))
     model.add(Convolution2D(64, 3, 3, activation='relu'))
@@ -140,7 +141,7 @@ def VGG(num_squares):
     model.add(Dense(num_squares, activation='softmax'))
 
     model.compile(loss=keras.losses.categorical_crossentropy,
-                  optimizer=keras.optimizers.SGD(),
+                  optimizer=keras.optimizers.Adam(),
                   metrics=['accuracy'])
 
     return model
@@ -179,9 +180,13 @@ class VarsContainer:
             print(file_name + " was loaded")
             self.files_by_counts[file_name] = 1
             nc = NCFile(file_name)
-            conc = nc.variables['iceconc'][:]
-            thic = nc.variables['icethic_cea'][:]
-            # thic = self.normalize(thic)
+            # TODO: this should be params list-like
+            if "satellite" in file_name:
+                conc = nc.variables['ice_conc'][:]
+                thic = np.empty((1, 400, 100), np.float32)
+            else:
+                conc = nc.variables['iceconc'][:]
+                thic = nc.variables['icethic_cea'][:]
             self.conc_dic[file_name] = conc
             self.thic_dic[file_name] = thic
 
@@ -224,10 +229,10 @@ def data_generator(samples, batch_size, vars_container, full_mask):
             yield (x, y)
 
 
-def ocean_data_generator(samples, batch_size, vars_container):
+def ocean_data_generator(samples, batch_size, vars_container, mode):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
-            x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 2), dtype=np.float32)
+            x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 1), dtype=np.float32)
             y = np.zeros((batch_size, 17))
 
             if sample_index + batch_size > len(samples):
@@ -237,12 +242,14 @@ def ocean_data_generator(samples, batch_size, vars_container):
             for index in range(sample_index, sample_index + offset):
                 nc_file = samples[index][0].nc_file
                 conc, thic = vars_container.values(nc_file)
-                ice_square = samples[index][0].ice_conc(conc)
+                conc_square = samples[index][0].ice_conc(conc)
                 thic_square = samples[index][0].ice_thic(thic)
-                # if not np.max(thic_square) == 0.0:
-                #     thic_square = thic_square / np.max(thic_square)
 
-                combined = np.stack(arrays=[ice_square, thic_square], axis=2)
+                if mode == "conc":
+                    combined = np.stack(arrays=[conc_square], axis=2)
+                elif mode == "thic":
+                    combined = np.stack(arrays=[thic_square], axis=2)
+
                 x[index - sample_index] = combined
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
@@ -379,7 +386,7 @@ def small_grid():
 
 
 def ocean_only():
-    data = read_samples("samples/ice_borders_only.csv")
+    data = read_samples("samples/ice_nemo_and_sat.csv")
     train, test = split_data(data.samples, 0.0)
 
     print(len(train))
@@ -407,8 +414,8 @@ def ocean_only():
 
     print(train_idx)
 
-    epochs = 15
-
+    epochs = 25
+    mode = "conc"
     container = VarsContainer()
 
     config = tf.ConfigProto()
@@ -418,11 +425,11 @@ def ocean_only():
     # model = init_advanced_ocean_model(11)
     model = VGG(17)
     history = AccuracyHistory()
-    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container),
+    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/ice_borders_only.h5")
+    model.save("samples/" + mode + "_model.h5")
     # model = load_model("samples/model.h5")
     # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
     #                                  steps=int(len(test) / test_batch_size))
