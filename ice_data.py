@@ -2,24 +2,25 @@ import csv
 import glob
 import os
 
-import keras
 import matplotlib
-import matplotlib.patheffects as PathEffects
 
 matplotlib.use('agg')
 
+import operator
+import keras
+import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 from keras.models import load_model
 from matplotlib.patches import Polygon
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NCFile
 from sklearn import tree
 from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
-import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 SQUARE_SIZE = 100
 IMAGE_SIZE = {
@@ -104,15 +105,36 @@ class IceSample:
 class IceDetector:
     def __init__(self, alpha):
         self.alpha = alpha
-        self.model = load_model("samples/conc_model.h5")
+        self.model = load_model("samples/sat_csvs/conc_model.h5")
 
         # ocean squares
-        self.squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+        self.squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+        # similar squares for september
+        d = dict()
+        d[0] = [0]
+        d[1] = [1, 4, 7]
+        d[2] = [4, 2]
+        d[3] = [4, 3]
+        d[4] = [4]
+        d[5] = [5]
+        d[6] = [14, 5, 10, 6]
+        d[7] = [14, 1, 7]
+        d[8] = [8, 4, 7, 10]
+        d[9] = [9, 4, 10]
+        d[10] = [10, 4]
+        d[11] = [11]
+        d[12] = [12]
+        d[13] = [7, 10, 5, 0, 14, 12, 13]
+        d[14] = [14, 7]
+        d[15] = [15]
+        d[16] = [16]
+        d[17] = [17]
+        d[18] = [18]
+        d[19] = [7, 8, 9, 19]
 
-        # levels of ice
-        # self.levels = [[0, 6], [1, 7, 5], [8, 9]]
+        self.similar = d
 
-        self.levels = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
+        # self.levels = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
 
     def detect(self, file_name):
         nc = NCFile(file_name)
@@ -138,19 +160,8 @@ class IceDetector:
                     result = self.model.predict(sample)
                     predicted_index = np.argmax(result[0])
 
-                    if predicted_index == self.squares.index(real_idx):
+                    if predicted_index in self.similar[self.squares.index(real_idx)]:
                         good_amount += 1
-                    else:
-                        if any(predicted_index in sublist for sublist in self.levels):
-                            out = True
-                            for level in self.levels:
-                                if predicted_index in level and self.squares.index(real_idx) in level:
-                                    out = False
-
-                            if not out:
-                                good_amount += 1
-                        else:
-                            good_amount += 1
 
                 real_idx += 1
 
@@ -192,7 +203,7 @@ def construct_ice_dataset_ocean_only():
 
 
 def construct_ice_dataset():
-    dataset = Dataset("samples/ice_nemo_and_sat.csv")
+    dataset = Dataset("samples/sat_only.csv")
     data_dir = "samples/ice_data/"
 
     squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
@@ -204,9 +215,31 @@ def construct_ice_dataset():
                 if "satellite" in nc_file:
                     if time == 0:
                         dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, 0, 0))
-                else:
-                    dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, time, 0))
+                # else:
+                #     dataset.samples.append(IceSample(nc_file, square_index + 1, SQUARE_SIZE, time, 0))
     dataset.dump_to_csv()
+
+
+def construct_ice_sat_dataset(month):
+    dataset = Dataset("samples/sat_csvs/sat_" + month + ".csv")
+    data_dir = "samples/conc_satellite/"
+
+    squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+
+    for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
+        for square in squares:
+            dataset.samples.append(IceSample(nc_file, square + 1, SQUARE_SIZE, 0, 0))
+
+    dataset.dump_to_csv()
+
+
+def sat_dataset_full_year():
+    months = [str(idx) for idx in range(1, 13)]
+
+    for month in months:
+        if len(month) < 2:
+            month = "0" + month
+        construct_ice_sat_dataset(month)
 
 
 def draw_ice_data(file_name):
@@ -343,7 +376,8 @@ def draw_ice_ocean_only(file_name):
     lon = nc.variables['nav_lon'][:]
 
     if "SAT" in file_name:
-        conc = nc.variables['ice_conc'][:][0]
+        conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+        conc = conc[0]
         thic = np.empty((1, 400, 100), np.float32)
     else:
         conc = nc.variables['iceconc'][:][0]
@@ -362,23 +396,38 @@ def draw_ice_ocean_only(file_name):
                 llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
-    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=3)
+    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
     m.drawcoastlines()
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
-    model = load_model("samples/conc_model.h5")
-    # squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-    #            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-    #            *list(range(139, 143))
-    #            ]
-    squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
-    levels = [[0, 6], [1, 7, 5], [8, 9]]
-    # levels = [list(range(4, 7)), [3, 7, *list(range(20, 25))], [2, 8, 19, 25, *list(range(37, 44))],
-    #           [1, 9, 18, 26, 36, 44, *list(range(53, 62))],
-    #           [0, *list(range(10, 13)), 17, 27, 28, 29, 35, 45, 46, 62, *list(range(69, 76)), *list(range(80, 86))],
-    #           [*list(range(14, 17)), *list(range(31, 34)), *list(range(49, 52))]]
-    # levels = [list(range(0, 3)), [*list(range(8, 15))], [*list(range(20, 24))]]
+    model = load_model("samples/sat_csvs/conc_model.h5")
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+    # similar squares for september
+    d = dict()
+    d[0] = [0]
+    d[1] = [1, 4, 7]
+    d[2] = [4, 2]
+    d[3] = [4, 3]
+    d[4] = [4]
+    d[5] = [5]
+    d[6] = [14, 5, 10, 6]
+    d[7] = [14, 1, 7]
+    d[8] = [8, 4, 7, 10]
+    d[9] = [9, 4, 10]
+    d[10] = [10, 4]
+    d[11] = [11]
+    d[12] = [12]
+    d[13] = [7, 10, 5, 0, 14, 12, 13]
+    d[14] = [14, 7]
+    d[15] = [15]
+    d[16] = [16]
+    d[17] = [17]
+    d[18] = [18]
+    d[19] = [7, 8, 9, 19]
+
+    similar = d
     real_idx = 0
     for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
         for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
@@ -417,17 +466,15 @@ def draw_ice_ocean_only(file_name):
                 for j in range(0, 4):
                     points[j][0] = mapx[j]
                     points[j][1] = mapy[j]
-                if predicted_index == squares.index(real_idx):
-                    poly = Polygon(points, color='green', fill=False, linewidth=3)
+
+                # check zones
+                print(predicted_index, squares.index(real_idx))
+                if predicted_index not in similar[squares.index(real_idx)]:
+                    poly = Polygon(points, color='red', fill=False, linewidth=3)
                     plt.gca().add_patch(poly)
                 else:
-                    out = True
-                    for level in levels:
-                        if predicted_index in level and squares.index(real_idx) in level:
-                            out = False
-
-                    if out:
-                        poly = Polygon(points, color='red', fill=False, linewidth=3)
+                    if predicted_index == squares.index(real_idx):
+                        poly = Polygon(points, color='green', fill=False, linewidth=3)
                         plt.gca().add_patch(poly)
                     else:
                         poly = Polygon(points, color='yellow', fill=False, linewidth=3)
@@ -440,7 +487,7 @@ def draw_ice_ocean_only(file_name):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
 
-    plt.colorbar(cax=cax, label="Ice thickness [m]")
+    plt.colorbar(cax=cax, label="Ice conc")
     # plt.title("Outlier detection results for : ARCTIC_1h_ice_grid_TUV_20130912-20130912.nc_1.nc", fontsize=10, loc='left')
 
     # red = mpatches.Patch(color='red', label='Outlier')
@@ -448,6 +495,157 @@ def draw_ice_ocean_only(file_name):
     # green = mpatches.Patch(color='green', label='Correct')
     # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
     plt.savefig("ice_tests.png", dpi=500)
+
+
+def draw_ice_zones(file_name):
+    nc = NCFile(file_name)
+    lat = nc.variables['nav_lat'][:]
+    lon = nc.variables['nav_lon'][:]
+
+    if "SAT" in file_name:
+        conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+        conc = conc[0]
+        thic = np.empty((1, 400, 100), np.float32)
+    else:
+        conc = nc.variables['iceconc'][:][0]
+        thic = nc.variables['icethic_cea'][:][0]
+
+    nc.close()
+
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+
+    real_idx = 0
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+            if real_idx in squares:
+                y_offset = int(SQUARE_SIZE / 4)
+                x_offset = int(SQUARE_SIZE / 2)
+                result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=10, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+
+                lat_poly = np.array(
+                    [lat[y][x], lat[y][x + SQUARE_SIZE - 1], lat[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lat[y + SQUARE_SIZE - 1][x]])
+                lon_poly = np.array(
+                    [lon[y][x], lon[y][x + SQUARE_SIZE - 1], lon[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lon[y + SQUARE_SIZE - 1][x]])
+                mapx, mapy = m(lon_poly, lat_poly)
+                points = np.zeros((4, 2), dtype=np.float32)
+                for j in range(0, 4):
+                    points[j][0] = mapx[j]
+                    points[j][1] = mapy[j]
+                poly = Polygon(points, color='green', fill=False, linewidth=3)
+                plt.gca().add_patch(poly)
+
+            real_idx += 1
+
+    ax = plt.gca()
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    plt.colorbar(cax=cax, label="Ice conc")
+    plt.show()
+
+
+def show_detection_results(file_name):
+    nc = NCFile(file_name)
+    lat = nc.variables['nav_lat'][:]
+    lon = nc.variables['nav_lon'][:]
+
+    conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+    conc = conc[0]
+    nc.close()
+
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+
+    model = load_model("samples/sat_csvs/conc_model.h5")
+
+    real_idx = 0
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+            if real_idx in squares:
+                sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
+
+                combined = np.stack(
+                    arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
+                    axis=2)
+                sample[0] = combined
+                result = model.predict(sample)
+                predicted_index = np.argmax(result[0])
+                print(predicted_index)
+                y_offset = int(SQUARE_SIZE / 4)
+                x_offset = int(SQUARE_SIZE / 2)
+
+                result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(predicted_index), ha='center', size=5, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 2 * y_offset][x + x_offset], lat[y + 2 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=5, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 3 * y_offset][x + x_offset], lat[y + 3 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=5,
+                         color="yellow", path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+
+                lat_poly = np.array(
+                    [lat[y][x], lat[y][x + SQUARE_SIZE - 1], lat[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lat[y + SQUARE_SIZE - 1][x]])
+                lon_poly = np.array(
+                    [lon[y][x], lon[y][x + SQUARE_SIZE - 1], lon[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lon[y + SQUARE_SIZE - 1][x]])
+                mapx, mapy = m(lon_poly, lat_poly)
+                points = np.zeros((4, 2), dtype=np.float32)
+                for j in range(0, 4):
+                    points[j][0] = mapx[j]
+                    points[j][1] = mapy[j]
+
+                if predicted_index == squares.index(real_idx):
+                    poly = Polygon(points, color='green', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+                else:
+                    poly = Polygon(points, color='red', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+
+            real_idx += 1
+
+    ax = plt.gca()
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    plt.colorbar(cax=cax, label="Ice conc ")
+    plt.savefig("samples/sat_csvs/test.png", dpi=500)
 
 
 def draw_ice_levels(file_name):
@@ -658,8 +856,8 @@ def test_detector():
     print(tpr)
     print(fpr)
     # fpr, tpr, _ = roc_curve(results[:, 1], results[:, 0])
-    # roc_auc = auc(fpr, tpr)
-    # print('AUC: %f' % roc_auc)
+    roc_auc = auc(fpr, tpr)
+    print('AUC: %f' % roc_auc)
 
     plt.figure()
     plt.plot(fpr, tpr)
@@ -668,7 +866,7 @@ def test_detector():
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    # plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+    plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
 
     # plt.show()
     plt.savefig("ice_results.png", dpi=500)
@@ -802,8 +1000,64 @@ def fit_tree():
     joblib.dump(clf, 'samples/tree.pkl')
 
 
+def count_predictions():
+    month = "09"
+    data_dir = "samples/conc_satellite/"
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+
+    model = load_model("samples/sat_csvs/conc_model.h5")
+
+    count = dict()
+
+    for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
+        nc = NCFile(nc_file)
+        conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+        conc = conc[0]
+        nc.close()
+        real_idx = 0
+        print(nc_file)
+        for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+            for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+                if real_idx in squares:
+                    sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
+
+                    combined = np.stack(
+                        arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
+                        axis=2)
+                    sample[0] = combined
+                    result = model.predict(sample)
+                    predicted_index = np.argmax(result[0])
+
+                    true_idx = squares.index(real_idx)
+                    if true_idx not in count.keys():
+                        count[true_idx] = dict()
+                        count[true_idx][predicted_index] = 1
+                    else:
+                        if predicted_index not in count[true_idx].keys():
+                            count[true_idx][predicted_index] = 1
+                        else:
+                            count[true_idx][predicted_index] += 1
+
+                real_idx += 1
+
+    filtered = count.copy()
+    for key in filtered.keys():
+        filtered[key] = []
+
+    for key in count.keys():
+        sorted_count = sorted(count[key].items(), key=operator.itemgetter(1))
+        sorted_count.reverse()
+        for pair in sorted_count:
+            if pair[1] >= 50:
+                filtered[key].append(pair[0])
+
+        print(str(key), " : ", str(sorted_count))
+        print("filtered : ", str(key), str(filtered[key]))
+
+
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/SAT_201309_avg.nc")
+# draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130923-20130923.nc_1.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -816,10 +1070,19 @@ def fit_tree():
 # print(detector.detect("samples/ice_bad_bad/4/ARCTIC_1h_ice_grid_TUV_20010806-20010806.nc"))
 
 #
-test_detector()
+# test_detector()
 
 # fit_tree()
 # tree_classification()
 # visualize_tree_classification("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
 
 # construct_ice_dataset()
+
+# draw_ice_zones("samples/avg/SAT_201312_avg.nc")
+
+# sat_dataset_full_year()
+
+# show_detection_results("samples/conc_satellite/2015/09/ice_conc_nh_ease2-250_cdr-v2p0_201509221200.nc")
+# count_predictions()
+
+test_detector()

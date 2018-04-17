@@ -1,5 +1,3 @@
-from random import shuffle
-
 import keras
 import numpy as np
 import tensorflow as tf
@@ -19,7 +17,8 @@ from ice_data import SQUARE_SIZE
 #            *list(range(139, 143))
 #            ]
 
-squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
+squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+zones = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
 
 
 def init_model():
@@ -141,7 +140,7 @@ def VGG(num_squares):
     model.add(Dense(num_squares, activation='softmax'))
 
     model.compile(loss=keras.losses.categorical_crossentropy,
-                  optimizer=keras.optimizers.Adam(),
+                  optimizer=keras.optimizers.SGD(),
                   metrics=['accuracy'])
 
     return model
@@ -182,7 +181,8 @@ class VarsContainer:
             nc = NCFile(file_name)
             # TODO: this should be params list-like
             if "satellite" in file_name:
-                conc = nc.variables['ice_conc'][:]
+                # TODO: check .filled and fix this anywhere
+                conc = nc.variables['ice_conc'][:].filled(0) / 100.0
                 thic = np.empty((1, 400, 100), np.float32)
             else:
                 conc = nc.variables['iceconc'][:]
@@ -233,7 +233,7 @@ def ocean_data_generator(samples, batch_size, vars_container, mode):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 1), dtype=np.float32)
-            y = np.zeros((batch_size, 17))
+            y = np.zeros((batch_size, 20))
 
             if sample_index + batch_size > len(samples):
                 offset = len(samples) - sample_index
@@ -244,12 +244,11 @@ def ocean_data_generator(samples, batch_size, vars_container, mode):
                 conc, thic = vars_container.values(nc_file)
                 conc_square = samples[index][0].ice_conc(conc)
                 thic_square = samples[index][0].ice_thic(thic)
-
+                # print(conc_square.shape)
                 if mode == "conc":
                     combined = np.stack(arrays=[conc_square], axis=2)
                 elif mode == "thic":
                     combined = np.stack(arrays=[thic_square], axis=2)
-
                 x[index - sample_index] = combined
                 y[index - sample_index] = samples[index][1]
             yield (x, y)
@@ -312,7 +311,7 @@ def big_grid():
     coastline_mask = mask_file.variables['Bathymetry'][:]
     mask_file.close()
 
-    epochs = 20
+    epochs = 60
 
     container = VarsContainer()
 
@@ -386,23 +385,26 @@ def small_grid():
 
 
 def ocean_only():
-    data = read_samples("samples/ice_nemo_and_sat.csv")
+    data = read_samples("samples/sat_csvs/sat_09.csv")
     train, test = split_data(data.samples, 0.0)
-
     print(len(train))
     print(len(test))
     train_batch_size = 50
     test_batch_size = 20
-    shuffle(train)
+    # shuffle(train)
     train_idx = []
+    # for sample in train:
+    #     label = len(zones)
+    #     for lvl_idx in range(len(zones)):
+    #         if squares.index(sample.index - 1) in zones[lvl_idx]:
+    #             label = lvl_idx
+    #     train_idx.append(label)
+    #     # train_idx.append(squares.index(sample.index - 1))
+    # train_idx = keras.utils.to_categorical(train_idx, len(zones) + 1)
+
     for sample in train:
         train_idx.append(squares.index(sample.index - 1))
     train_idx = keras.utils.to_categorical(train_idx, len(squares))
-
-    # test_idx = []
-    # for sample in test:
-    #     test_idx.append(squares.index(sample.index - 1))
-    # test_idx = keras.utils.to_categorical(test_idx, len(squares))
 
     tr_samples = []
     for idx in range(len(train)):
@@ -412,9 +414,7 @@ def ocean_only():
     # for idx in range(len(test)):
     #     tt_samples.append([test[idx], test_idx[idx]])
 
-    print(train_idx)
-
-    epochs = 25
+    epochs = 40
     mode = "conc"
     container = VarsContainer()
 
@@ -423,13 +423,13 @@ def ocean_only():
     set_session(tf.Session(config=config))
 
     # model = init_advanced_ocean_model(11)
-    model = VGG(17)
+    model = VGG(20)
     history = AccuracyHistory()
     model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/" + mode + "_model.h5")
+    model.save("samples/sat_csvs/" + mode + "_model.h5")
     # model = load_model("samples/model.h5")
     # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
     #                                  steps=int(len(test) / test_batch_size))
