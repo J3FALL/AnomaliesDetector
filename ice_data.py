@@ -487,14 +487,14 @@ def draw_ice_ocean_only(file_name):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
 
-    plt.colorbar(cax=cax, label="Ice conc")
+    plt.colorbar(cax=cax, label="Ice concentration")
     # plt.title("Outlier detection results for : ARCTIC_1h_ice_grid_TUV_20130912-20130912.nc_1.nc", fontsize=10, loc='left')
 
     # red = mpatches.Patch(color='red', label='Outlier')
     # yellow = mpatches.Patch(color='yellow', label='Rather correct')
     # green = mpatches.Patch(color='green', label='Correct')
     # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
-    plt.savefig("ice_tests.png", dpi=500)
+    plt.savefig("ice_good.png", dpi=500)
 
 
 def draw_ice_zones(file_name):
@@ -569,8 +569,9 @@ def show_detection_results(file_name):
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
 
-    conc = nc.variables['ice_conc'][:].filled(0) / 100.0
-    conc = conc[0]
+    conc = nc.variables['iceconc'][:][0]
+    # conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+    # conc = conc[0]
     nc.close()
 
     lat_left_bottom = lat[-1][-1]
@@ -644,8 +645,8 @@ def show_detection_results(file_name):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
 
-    plt.colorbar(cax=cax, label="Ice conc ")
-    plt.savefig("samples/sat_csvs/test.png", dpi=500)
+    plt.colorbar(cax=cax, label="Ice concentration ")
+    plt.savefig("samples/sat_csvs/on_train.png", dpi=500)
 
 
 def draw_ice_levels(file_name):
@@ -1056,8 +1057,80 @@ def count_predictions():
         print("filtered : ", str(key), str(filtered[key]))
 
 
+def vis():
+    nc = NCFile("samples/conc_satellite/2013/09/ice_conc_nh_ease2-250_cdr-v2p0_201309181200.nc")
+    lat = nc.variables['nav_lat'][:]
+    lon = nc.variables['nav_lon'][:]
+
+    # conc = nc.variables['iceconc'][:][0]
+    conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+    conc = conc[0]
+    # thic = nc.variables['icethic_cea'][:][0]
+    nc.close()
+
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+    zones = [[1, 2, 3, 4, 9], [0, 8, 14, 15, 10, 11, 5, 18], [6, 13, 12, 19, 17, 16]]
+    real_idx = 0
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+            if real_idx in squares:
+                y_offset = int(SQUARE_SIZE / 2)
+                x_offset = int(SQUARE_SIZE / 2)
+
+                result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(squares.index(real_idx)), ha='center', size=10, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+
+                lat_poly = np.array(
+                    [lat[y][x], lat[y][x + SQUARE_SIZE - 1], lat[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lat[y + SQUARE_SIZE - 1][x]])
+                lon_poly = np.array(
+                    [lon[y][x], lon[y][x + SQUARE_SIZE - 1], lon[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
+                     lon[y + SQUARE_SIZE - 1][x]])
+                mapx, mapy = m(lon_poly, lat_poly)
+                points = np.zeros((4, 2), dtype=np.float32)
+                for j in range(0, 4):
+                    points[j][0] = mapx[j]
+                    points[j][1] = mapy[j]
+
+                if squares.index(real_idx) in zones[0]:
+                    poly = Polygon(points, color='red', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+                if squares.index(real_idx) in zones[1]:
+                    poly = Polygon(points, color='yellow', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+                if squares.index(real_idx) in zones[2]:
+                    poly = Polygon(points, color='blue', fill=False, linewidth=3)
+                    plt.gca().add_patch(poly)
+
+            real_idx += 1
+
+    ax = plt.gca()
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    plt.colorbar(cax=cax, label="Ice concentration")
+    plt.savefig("samples/conc_squares.png", dpi=500)
+
+
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130923-20130923.nc_1.nc")
+draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120907-20120907.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -1082,7 +1155,9 @@ def count_predictions():
 
 # sat_dataset_full_year()
 
-# show_detection_results("samples/conc_satellite/2015/09/ice_conc_nh_ease2-250_cdr-v2p0_201509221200.nc")
+# show_detection_results("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130907-20130907.nc_1.nc")
 # count_predictions()
 
-test_detector()
+# test_detector()
+
+# vis()
