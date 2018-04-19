@@ -11,8 +11,6 @@ import keras
 import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
 from keras.models import load_model
 from matplotlib.patches import Polygon
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -21,16 +19,14 @@ from netCDF4 import Dataset as NCFile
 from sklearn import tree
 from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
+from keras import backend as K
+import tensorflow as tf
 
 SQUARE_SIZE = 100
 IMAGE_SIZE = {
     'x': 1100,
     'y': 400
 }
-
-config = tf.ConfigProto()
-config.gpu_options.visible_device_list = "1"
-set_session(tf.Session(config=config))
 
 
 class Dataset:
@@ -351,7 +347,8 @@ def draw_ice_ocean_only(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
-    month = "09"
+    month = select_month(file_name)
+    print("month: ", month)
     if "SAT" in file_name:
         conc = nc.variables['ice_conc'][:].filled(0) / 100.0
         conc = conc[0]
@@ -378,11 +375,15 @@ def draw_ice_ocean_only(file_name):
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    K.set_session(tf.Session(config=config))
+
     model = load_model("samples/sat_csvs/conc" + month + "_model.h5")
 
     squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
     # similar squares for september
-    d = load_zones("09")
+    d = load_zones(month)
     similar = d
     real_idx = 0
     for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
@@ -450,7 +451,9 @@ def draw_ice_ocean_only(file_name):
     # yellow = mpatches.Patch(color='yellow', label='Rather correct')
     # green = mpatches.Patch(color='green', label='Correct')
     # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
-    plt.savefig("ice_good.png", dpi=500)
+    plt.savefig(file_name + "_results.png", dpi=500)
+
+    K.clear_session()
 
 
 def draw_ice_zones(file_name):
@@ -1025,6 +1028,13 @@ def load_zones(month):
     return zones
 
 
+def select_month(file_name):
+    # ARCTIC_1h_ice_grid_TUV_YYYYMMDD-YYYYMMDD
+    date = file_name.split("-")[1]
+    month = date[4:6]
+    return month
+
+
 def vis():
     nc = NCFile("samples/conc_satellite/2013/09/ice_conc_nh_ease2-250_cdr-v2p0_201309181200.nc")
     lat = nc.variables['nav_lat'][:]
@@ -1097,8 +1107,32 @@ def vis():
     plt.savefig("samples/conc_squares.png", dpi=500)
 
 
+def test_full_year():
+    dir = "samples/ice_test_bad_full_year/"
+
+    for nc_file in glob.iglob(dir + "**/*.nc", recursive=True):
+        draw_ice_ocean_only(nc_file)
+
+
+def pick_same_sat_image(file_name):
+    from pathlib import Path
+    # ARCTIC_1h_ice_grid_TUV_YYYYMMDD-YYYYMMDD.nc
+    date = file_name.split("-")[1].split(".")[0]
+    year = date[0:4]
+    month = date[4:6]
+
+    sat_file_name = "samples/conc_satellite/" + year + "/" + month + "/ice_conc_nh_ease2-250_cdr-v2p0_" + date + "1200.nc"
+
+    file = Path(sat_file_name)
+
+    if not file.exists():
+        print(sat_file_name + " doesn't exists")
+
+    return sat_file_name
+
+
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120907-20120907.nc")
+# draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120907-20120907.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -1129,3 +1163,6 @@ draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120907-201
 # test_detector()
 
 # vis()
+# test_full_year()
+# draw_ice_ocean_only("samples/ARCTIC_1h_ice_grid_TUV_20121112-20121112.nc")
+

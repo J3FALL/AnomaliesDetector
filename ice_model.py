@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 
 from ice_data import Dataset
 from ice_data import SQUARE_SIZE
+from ice_data import count_predictions
 
 # squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
 #            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
@@ -385,24 +386,13 @@ def small_grid():
 
 
 def ocean_only():
-    month = "01"
+    month = "12"
     data = read_samples("samples/sat_csvs/sat_" + month + ".csv")
     train, test = split_data(data.samples, 0.0)
     print(len(train))
     print(len(test))
     train_batch_size = 50
-    test_batch_size = 20
-    # shuffle(train)
     train_idx = []
-    # for sample in train:
-    #     label = len(zones)
-    #     for lvl_idx in range(len(zones)):
-    #         if squares.index(sample.index - 1) in zones[lvl_idx]:
-    #             label = lvl_idx
-    #     train_idx.append(label)
-    #     # train_idx.append(squares.index(sample.index - 1))
-    # train_idx = keras.utils.to_categorical(train_idx, len(zones) + 1)
-
     for sample in train:
         train_idx.append(squares.index(sample.index - 1))
     train_idx = keras.utils.to_categorical(train_idx, len(squares))
@@ -411,11 +401,7 @@ def ocean_only():
     for idx in range(len(train)):
         tr_samples.append([train[idx], train_idx[idx]])
 
-    # tt_samples = []
-    # for idx in range(len(test)):
-    #     tt_samples.append([test[idx], test_idx[idx]])
-
-    epochs = 50
+    epochs = 40
     mode = "conc"
     container = VarsContainer()
 
@@ -431,13 +417,7 @@ def ocean_only():
                         callbacks=[history],
                         epochs=epochs)
     model.save("samples/sat_csvs/" + mode + month + "_model.h5")
-    # model = load_model("samples/model.h5")
-    # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
-    #                                  steps=int(len(test) / test_batch_size))
-
-    # t = model.evaluate_generator(ocean_data_generator(tt_samples, test_batch_size, container),
-    #                              steps=int(len(test) / test_batch_size))
-    # print(t)
+    count_predictions(month)
 
 
 ocean_only()
