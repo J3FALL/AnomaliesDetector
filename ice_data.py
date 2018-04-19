@@ -103,38 +103,15 @@ class IceSample:
 
 
 class IceDetector:
-    def __init__(self, alpha):
+    def __init__(self, alpha, month):
         self.alpha = alpha
-        self.model = load_model("samples/sat_csvs/conc_model.h5")
+        self.model = load_model("samples/sat_csvs/conc" + month + "_model.h5")
 
         # ocean squares
         self.squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
         # similar squares for september
-        d = dict()
-        d[0] = [0]
-        d[1] = [1, 4, 7]
-        d[2] = [4, 2]
-        d[3] = [4, 3]
-        d[4] = [4]
-        d[5] = [5]
-        d[6] = [14, 5, 10, 6]
-        d[7] = [14, 1, 7]
-        d[8] = [8, 4, 7, 10]
-        d[9] = [9, 4, 10]
-        d[10] = [10, 4]
-        d[11] = [11]
-        d[12] = [12]
-        d[13] = [7, 10, 5, 0, 14, 12, 13]
-        d[14] = [14, 7]
-        d[15] = [15]
-        d[16] = [16]
-        d[17] = [17]
-        d[18] = [18]
-        d[19] = [7, 8, 9, 19]
-
+        d = load_zones(month)
         self.similar = d
-
-        # self.levels = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
 
     def detect(self, file_name):
         nc = NCFile(file_name)
@@ -374,7 +351,7 @@ def draw_ice_ocean_only(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
-
+    month = "09"
     if "SAT" in file_name:
         conc = nc.variables['ice_conc'][:].filled(0) / 100.0
         conc = conc[0]
@@ -401,32 +378,11 @@ def draw_ice_ocean_only(file_name):
     m.drawcountries()
     m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
-    model = load_model("samples/sat_csvs/conc_model.h5")
+    model = load_model("samples/sat_csvs/conc" + month + "_model.h5")
 
     squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
     # similar squares for september
-    d = dict()
-    d[0] = [0]
-    d[1] = [1, 4, 7]
-    d[2] = [4, 2]
-    d[3] = [4, 3]
-    d[4] = [4]
-    d[5] = [5]
-    d[6] = [14, 5, 10, 6]
-    d[7] = [14, 1, 7]
-    d[8] = [8, 4, 7, 10]
-    d[9] = [9, 4, 10]
-    d[10] = [10, 4]
-    d[11] = [11]
-    d[12] = [12]
-    d[13] = [7, 10, 5, 0, 14, 12, 13]
-    d[14] = [14, 7]
-    d[15] = [15]
-    d[16] = [16]
-    d[17] = [17]
-    d[18] = [18]
-    d[19] = [7, 8, 9, 19]
-
+    d = load_zones("09")
     similar = d
     real_idx = 0
     for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
@@ -820,7 +776,7 @@ def test_detector():
 
     print(len(samples))
 
-    detector = IceDetector(0.1)
+    detector = IceDetector(0.1, "09")
     results = np.zeros((len(samples), 2))
     idx = 0
     for sample in samples:
@@ -1001,13 +957,12 @@ def fit_tree():
     joblib.dump(clf, 'samples/tree.pkl')
 
 
-def count_predictions():
-    month = "09"
+def count_predictions(month):
     data_dir = "samples/conc_satellite/"
 
     squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
 
-    model = load_model("samples/sat_csvs/conc_model.h5")
+    model = load_model("samples/sat_csvs/conc" + month + "_model.h5")
 
     count = dict()
 
@@ -1055,6 +1010,19 @@ def count_predictions():
 
         print(str(key), " : ", str(sorted_count))
         print("filtered : ", str(key), str(filtered[key]))
+
+    for key in filtered.keys():
+        if key not in filtered[key]:
+            filtered[key].append(key)
+
+    # save map to file
+    np.save("samples/sat_csvs/zones_" + month + ".npy", filtered)
+
+
+def load_zones(month):
+    zones = np.load("samples/sat_csvs/zones_" + month + ".npy").item()
+
+    return zones
 
 
 def vis():

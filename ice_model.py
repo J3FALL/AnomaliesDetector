@@ -385,7 +385,8 @@ def small_grid():
 
 
 def ocean_only():
-    data = read_samples("samples/sat_csvs/sat_09.csv")
+    month = "01"
+    data = read_samples("samples/sat_csvs/sat_" + month + ".csv")
     train, test = split_data(data.samples, 0.0)
     print(len(train))
     print(len(test))
@@ -414,7 +415,7 @@ def ocean_only():
     # for idx in range(len(test)):
     #     tt_samples.append([test[idx], test_idx[idx]])
 
-    epochs = 40
+    epochs = 50
     mode = "conc"
     container = VarsContainer()
 
@@ -429,7 +430,7 @@ def ocean_only():
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/sat_csvs/" + mode + "_model.h5")
+    model.save("samples/sat_csvs/" + mode + month + "_model.h5")
     # model = load_model("samples/model.h5")
     # scores = model.predict_generator(data_generator(tt_samples, test_batch_size, d),
     #                                  steps=int(len(test) / test_batch_size))
