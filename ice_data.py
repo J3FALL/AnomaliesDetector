@@ -20,6 +20,7 @@ from sklearn import tree
 from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
 from keras import backend as K
+from scipy import ndimage
 import tensorflow as tf
 
 SQUARE_SIZE = 100
@@ -27,6 +28,25 @@ IMAGE_SIZE = {
     'x': 1100,
     'y': 400
 }
+
+# x: [from, to], y: [from, to]
+BORDERS = [
+    {'x': [100, 800],
+     'y': [0, 200]},
+    {'x': [200, 800],
+     'y': [200, 300]}
+]
+
+
+def is_inside(x, y):
+    for border in BORDERS:
+        x_border = border['x']
+        y_border = border['y']
+
+        if x_border[0] <= x < x_border[1] and y_border[0] <= y < y_border[1]:
+            return True
+
+    return False
 
 
 class Dataset:
@@ -116,6 +136,8 @@ class IceDetector:
 
         nc.close()
 
+        conc = ndimage.uniform_filter(conc, 10)
+
         real_idx = 0
         good_amount = 0
 
@@ -193,26 +215,28 @@ def construct_ice_dataset():
     dataset.dump_to_csv()
 
 
-def construct_ice_sat_dataset(month):
-    dataset = Dataset("samples/sat_csvs/sat_" + month + ".csv")
+def construct_ice_sat_dataset(month, dir):
+    dataset = Dataset(dir + "sat_" + month + ".csv")
     data_dir = "samples/conc_satellite/"
 
-    squares = [*list(range(1, 7)), *list(range(12, 18)), *list(range(24, 29))]
-
     for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
-        for square in squares:
-            dataset.samples.append(IceSample(nc_file, square + 1, SQUARE_SIZE, 0, 0))
+        square = 0
+        for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+            for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+                if is_inside(x, y):
+                    dataset.samples.append(IceSample(nc_file, square + 1, SQUARE_SIZE, 0, 0))
+                square += 1
 
     dataset.dump_to_csv()
 
 
-def sat_dataset_full_year():
+def sat_dataset_full_year(dir="samples/sat_csvs/"):
     months = [str(idx) for idx in range(1, 13)]
 
     for month in months:
         if len(month) < 2:
             month = "0" + month
-        construct_ice_sat_dataset(month)
+        construct_ice_sat_dataset(month, dir)
 
 
 def draw_ice_data(file_name):
@@ -349,16 +373,17 @@ def draw_ice_ocean_only(file_name):
     lon = nc.variables['nav_lon'][:]
     month = select_month(file_name)
     print("month: ", month)
-    if "SAT" in file_name:
+    if "sat" in file_name:
         conc = nc.variables['ice_conc'][:].filled(0) / 100.0
         conc = conc[0]
+
         thic = np.empty((1, 400, 100), np.float32)
     else:
         conc = nc.variables['iceconc'][:][0]
+        conc = ndimage.uniform_filter(conc, 10)
         thic = nc.variables['icethic_cea'][:][0]
 
     nc.close()
-
     lat_left_bottom = lat[-1][-1]
     lon_left_bottom = lon[-1][-1]
     lat_right_top = lat[0][0]
@@ -779,6 +804,10 @@ def test_detector():
 
     print(len(samples))
 
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    K.set_session(tf.Session(config=config))
+
     detector = IceDetector(0.1, "09")
     results = np.zeros((len(samples), 2))
     idx = 0
@@ -830,6 +859,165 @@ def test_detector():
 
     # plt.show()
     plt.savefig("ice_results.png", dpi=500)
+    K.clear_session()
+
+
+def samples_distribution_by_cnn():
+    good_dir = "samples/ice_tests/good/2013"
+    bad_dir = "samples/ice_tests/bad/"
+
+    good = []
+    bad = []
+
+    # label good data
+    for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
+        good.append([os.path.normpath(file_name), 1])
+
+    print(len(good))
+    # label bad data
+    for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
+        bad.append([os.path.normpath(file_name), 0])
+
+    print(len(bad))
+
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    K.set_session(tf.Session(config=config))
+
+    detector = IceDetector(0.1, "09")
+    good_results = []
+
+    for sample in good:
+        pred, val = detector.detect(sample[0])
+        good_results.append(val)
+
+    good_count = []
+    idx = -1
+    for barrier in np.arange(0, 1.0, 0.1):
+        idx += 1
+        good_count.append(0)
+        for result in good_results:
+            if result > barrier:
+                good_count[idx] += 1
+
+    bad_results = []
+
+    for sample in bad:
+        pred, val = detector.detect(sample[0])
+        bad_results.append(val)
+
+    bad_count = []
+    idx = -1
+    for barrier in np.arange(0, 1.0, 0.1):
+        idx += 1
+        bad_count.append(0)
+        for result in bad_results:
+            if result < barrier:
+                bad_count[idx] += 1
+
+    print(good_count)
+    print(bad_count)
+
+
+def samples_distribution_by_sat():
+    good_dir = "samples/ice_tests/good/2013"
+    bad_dir = "samples/ice_tests/bad/"
+
+    good = []
+    bad = []
+
+    # label good data
+    for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
+        good.append([os.path.normpath(file_name), 1])
+
+    print(len(good))
+    # label bad data
+    for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
+        bad.append([os.path.normpath(file_name), 0])
+
+    print(len(bad))
+
+    good_results = []
+
+    for sample in good:
+        val = sat_validate(sample[0])
+        print(sample[0], val)
+        good_results.append(val)
+
+    good_count = []
+    idx = -1
+    for barrier in np.arange(0, 1.0, 0.1):
+        idx += 1
+        good_count.append(0)
+        for result in good_results:
+            if result > barrier:
+                good_count[idx] += 1
+
+    bad_results = []
+
+    for sample in bad:
+        val = sat_validate(sample[0])
+        print(sample[0], val)
+        bad_results.append(val)
+
+    bad_count = []
+    idx = -1
+    for barrier in np.arange(0, 1.0, 0.1):
+        idx += 1
+        bad_count.append(0)
+        for result in bad_results:
+            if result < barrier:
+                bad_count[idx] += 1
+
+    print(good_count)
+    print(bad_count)
+
+
+def compare_nn_and_sat():
+    bad_dir = "samples/ice_tests/bad/"
+    bad = []
+
+    # label bad data
+    for file_name in glob.iglob(bad_dir + "**/*.nc", recursive=True):
+        bad.append([os.path.normpath(file_name), 1])
+
+    sat_results = []
+
+    for sample in bad:
+        val = sat_validate(sample[0])
+        print(sample[0], val)
+        sat_results.append(val)
+    print("SAT results: ", sat_results)
+
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    K.set_session(tf.Session(config=config))
+
+    detector = IceDetector(0.1, "09")
+    cnn_results = []
+
+    for sample in bad:
+        pred, val = detector.detect(sample[0])
+        print(sample[0], val)
+        cnn_results.append(val)
+    print("CNN results: ", cnn_results)
+
+    cnn_treshold = 0.6
+    sat_treshold = 0.5
+
+    cnn_correct_predicted = 0
+    sat_correct_predicted = 0
+
+    for val in cnn_results:
+        if val > cnn_treshold:
+            cnn_correct_predicted += 1
+
+    for val in sat_results:
+        if val > sat_treshold:
+            sat_correct_predicted += 1
+
+    print("CNN: % bad correct predicted", cnn_correct_predicted / len(bad))
+    print("SAT: % bad correct predicted", sat_correct_predicted / len(bad))
 
 
 def tree_classification():
@@ -1031,6 +1219,8 @@ def load_zones(month):
 def select_month(file_name):
     # ARCTIC_1h_ice_grid_TUV_YYYYMMDD-YYYYMMDD
     date = file_name.split("-")[1]
+    if "satellite" in file_name:
+        date = file_name.split("/")[4].split("_")[5]
     month = date[4:6]
     return month
 
@@ -1121,7 +1311,8 @@ def pick_same_sat_image(file_name):
     year = date[0:4]
     month = date[4:6]
 
-    sat_file_name = "samples/conc_satellite/" + year + "/" + month + "/ice_conc_nh_ease2-250_cdr-v2p0_" + date + "1200.nc"
+    sat_file_name = \
+        "samples/conc_satellite/" + year + "/" + month + "/ice_conc_nh_ease2-250_cdr-v2p0_" + date + "1200.nc"
 
     file = Path(sat_file_name)
 
@@ -1131,8 +1322,76 @@ def pick_same_sat_image(file_name):
     return sat_file_name
 
 
+def conc_dif(src_file, sat_file):
+    src = NCFile(src_file)
+    lat = src.variables['nav_lat'][:]
+    lon = src.variables['nav_lon'][:]
+    src_conc = src.variables['iceconc'][:][0]
+    src.close()
+
+    sat = NCFile(sat_file)
+    sat_conc = sat.variables['ice_conc'][:].filled(0) / 100.0
+    sat.close()
+    dif = abs(src_conc - sat_conc[0])
+    dif_field = np.full((400, 1100), fill_value=0.0)
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+    real_idx = 0
+
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+            if real_idx in squares:
+                square_dif = np.sum(dif[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]) / (100.0 * 100.0)
+                dif_field[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE] = np.full((SQUARE_SIZE, SQUARE_SIZE),
+                                                                          fill_value=square_dif)
+            real_idx += 1
+
+    # lat_left_bottom = lat[-1][-1]
+    # lon_left_bottom = lon[-1][-1]
+    # lat_right_top = lat[0][0]
+    # lon_right_top = lon[0][0]
+    # lat_center = 90
+    # # 110, 119
+    # lon_center = 110
+    # m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+    #             llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+    #             urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+    #
+    # m.pcolormesh(lon, lat, dif_field, latlon=True, cmap='RdYlBu_r', vmax=0.5)
+    # m.drawcoastlines()
+    # m.drawcountries()
+    # m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+    # ax = plt.gca()
+    # divider = make_axes_locatable(ax)
+    # cax = divider.append_axes("right", size="5%", pad=0.05)
+    #
+    # plt.colorbar(cax=cax, label="Ice conc diff")
+    # plt.savefig("samples/conc_diff.png", dpi=500)
+
+    return dif_field
+
+
+def sat_validate(file_name):
+    sat_image = pick_same_sat_image(file_name)
+
+    dif = conc_dif(file_name, sat_image)
+
+    squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+    real_idx = 0
+    good_amount = 0
+    treshold = 0.25
+    for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+        for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+            if real_idx in squares:
+                if dif[y + int(SQUARE_SIZE / 2)][x + int(SQUARE_SIZE / 2)] < treshold:
+                    good_amount += 1
+
+            real_idx += 1
+    return good_amount / len(squares)
+
+
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120907-20120907.nc")
+# draw_ice_ocean_only("samples/ice_tests/bad/6/ARCTIC_1h_ice_grid_TUV_20120920-20120920.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -1166,3 +1425,12 @@ def pick_same_sat_image(file_name):
 # test_full_year()
 # draw_ice_ocean_only("samples/ARCTIC_1h_ice_grid_TUV_20121112-20121112.nc")
 
+# print(sat_validate("samples/ice_tests/bad/3/ARCTIC_1h_ice_grid_TUV_20120906-20120906.nc"))
+
+# samples_distribution_by_cnn()
+# samples_distribution_by_sat()
+
+# compare_nn_and_sat()
+
+# construct_ice_sat_dataset('09', 'samples/sat_with_square_sizes/100/')
+sat_dataset_full_year("samples/sat_with_square_sizes/25/")

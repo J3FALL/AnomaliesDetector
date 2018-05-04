@@ -19,7 +19,6 @@ from ice_data import count_predictions
 #            ]
 
 squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
-zones = [[5, 11, 0, 6], [1, 2, 3, 4, 7, 8, 9, 10, 12]]
 
 
 def init_model():
