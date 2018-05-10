@@ -13,12 +13,7 @@ from ice_data import Dataset
 from ice_data import SQUARE_SIZE
 from ice_data import count_predictions
 
-# squares = [*list(range(2, 19)), *list(range(24, 41)), *list(range(45, 63)),
-#            *list(range(68, 85)), *list(range(92, 103)), *list(range(114, 121)),
-#            *list(range(139, 143))
-#            ]
-
-squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
+num_classes = [20, 80, 320]
 
 
 def init_model():
@@ -83,6 +78,25 @@ def init_advanced_ocean_model(num_squares):
     model.add(Dense(2000, activation='relu'))
     model.add(Dropout(0.5))
     model.add(Dense(2000, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(num_squares, activation='softmax'))
+
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.Adam(),
+                  metrics=['accuracy'])
+
+    return model
+
+
+def MLP(num_squares):
+    input_shape = (SQUARE_SIZE, SQUARE_SIZE, 1)
+    model = Sequential()
+    model.add(ZeroPadding2D((1, 1), input_shape=input_shape))
+    model.add(Flatten())
+    model.add(Dense(4096, activation='relu'))
+    model.add(Dense(4096, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(4096, activation='relu'))
     model.add(Dropout(0.5))
     model.add(Dense(num_squares, activation='softmax'))
 
@@ -233,7 +247,7 @@ def ocean_data_generator(samples, batch_size, vars_container, mode):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 1), dtype=np.float32)
-            y = np.zeros((batch_size, 20))
+            y = np.zeros((batch_size, num_classes[2]))
 
             if sample_index + batch_size > len(samples):
                 offset = len(samples) - sample_index
@@ -384,23 +398,64 @@ def small_grid():
     # print(scores)
 
 
-def ocean_only():
-    month = "12"
-    data = read_samples("samples/sat_csvs/sat_" + month + ".csv")
+def save(model, name):
+    print("Now we save model")
+    model.save_weights(name, overwrite=True)
+
+
+def ocean_with_mlp():
+    month = "09"
+    data = read_samples("samples/sat_with_square_sizes/25/sat_" + month + ".csv")
     train, test = split_data(data.samples, 0.0)
     print(len(train))
     print(len(test))
-    train_batch_size = 50
+    train_batch_size = 400
     train_idx = []
     for sample in train:
-        train_idx.append(squares.index(sample.index - 1))
-    train_idx = keras.utils.to_categorical(train_idx, len(squares))
+        train_idx.append(sample.index)
+    train_idx = keras.utils.to_categorical(train_idx, num_classes[2])
 
     tr_samples = []
     for idx in range(len(train)):
         tr_samples.append([train[idx], train_idx[idx]])
 
-    epochs = 40
+    epochs = 100
+    mode = "conc"
+    container = VarsContainer()
+
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = "1"
+    set_session(tf.Session(config=config))
+
+    model = MLP(num_classes[2])
+    history = AccuracyHistory()
+    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode),
+                        steps_per_epoch=train_batch_size,
+                        callbacks=[history],
+                        epochs=epochs)
+    # model.save("samples/sat_with_square_sizes/100/" + mode + month + "_model.h5")
+    save(model, "samples/sat_with_square_sizes/25/" + mode + month + "_mlp_model.h5")
+    model = MLP(num_classes[2])
+    count_predictions(model, month)
+
+
+def ocean_only():
+    month = "09"
+    data = read_samples("samples/sat_with_square_sizes/25/sat_" + month + ".csv")
+    train, test = split_data(data.samples, 0.0)
+    print(len(train))
+    print(len(test))
+    train_batch_size = 400
+    train_idx = []
+    for sample in train:
+        train_idx.append(sample.index)
+    train_idx = keras.utils.to_categorical(train_idx, num_classes[2])
+
+    tr_samples = []
+    for idx in range(len(train)):
+        tr_samples.append([train[idx], train_idx[idx]])
+
+    epochs = 100
     mode = "conc"
     container = VarsContainer()
 
@@ -409,14 +464,19 @@ def ocean_only():
     set_session(tf.Session(config=config))
 
     # model = init_advanced_ocean_model(11)
-    model = VGG(20)
+    model = VGG(num_classes[2])
     history = AccuracyHistory()
     model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    model.save("samples/sat_csvs/" + mode + month + "_model.h5")
-    count_predictions(month)
+    # model.save("samples/sat_with_square_sizes/100/" + mode + month + "_model.h5")
+    save(model, "samples/sat_with_square_sizes/25/" + mode + month + "_model.h5")
+    model = VGG(num_classes[2])
+    count_predictions(model, month)
 
 
-ocean_only()
+# ocean_only()
+# model = VGG(num_classes[0])
+# count_predictions(model, "09")
+ocean_with_mlp()
