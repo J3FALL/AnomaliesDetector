@@ -176,6 +176,12 @@ def split_data(samples, test_size):
     return train, test
 
 
+def reduce_conc(conc):
+    conc[conc < 0.4] = 0.0
+
+    return conc
+
+
 class VarsContainer:
     def __init__(self):
         self.conc_dic = {}
@@ -201,6 +207,8 @@ class VarsContainer:
             else:
                 conc = nc.variables['iceconc'][:]
                 thic = nc.variables['icethic_cea'][:]
+
+            conc = reduce_conc(conc)
             self.conc_dic[file_name] = conc
             self.thic_dic[file_name] = thic
 
@@ -243,11 +251,11 @@ def data_generator(samples, batch_size, vars_container, full_mask):
             yield (x, y)
 
 
-def ocean_data_generator(samples, batch_size, vars_container, mode):
+def ocean_data_generator(samples, batch_size, vars_container, mode, mask):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 1), dtype=np.float32)
-            y = np.zeros((batch_size, num_classes[2]))
+            y = np.zeros((batch_size, num_classes[0]))
 
             if sample_index + batch_size > len(samples):
                 offset = len(samples) - sample_index
@@ -257,6 +265,12 @@ def ocean_data_generator(samples, batch_size, vars_container, mode):
                 nc_file = samples[index][0].nc_file
                 conc, thic = vars_container.values(nc_file)
                 conc_square = samples[index][0].ice_conc(conc)
+
+                # if np.argmax(samples[index][1]) in [15, 16, 17, 18, 19]:
+                #     x_conc = samples[index][0].x
+                #     y_cons = samples[index][0].y
+                #     conc_square = conc_square * mask[y_cons:y_cons + SQUARE_SIZE, x_conc:x_conc + SQUARE_SIZE]
+                    # conc_square = np.full((100, 100), fill_value=0.0)
                 thic_square = samples[index][0].ice_thic(thic)
                 # print(conc_square.shape)
                 if mode == "conc":
@@ -439,23 +453,35 @@ def ocean_with_mlp():
     count_predictions(model, month)
 
 
+def load_mask():
+    mask_file = NCFile("bathy_meter_mask.nc")
+    mask = mask_file.variables['Bathymetry'][:]
+    mask_file.close()
+
+    mask = 1 - mask
+
+    return mask
+
+
 def ocean_only():
-    month = "09"
-    data = read_samples("samples/sat_with_square_sizes/25/sat_" + month + ".csv")
+    month = "04"
+    data = read_samples("samples/sat_csvs/sat_" + month + ".csv")
     train, test = split_data(data.samples, 0.0)
     print(len(train))
     print(len(test))
-    train_batch_size = 400
+    train_batch_size = 50
     train_idx = []
     for sample in train:
         train_idx.append(sample.index)
-    train_idx = keras.utils.to_categorical(train_idx, num_classes[2])
+    train_idx = keras.utils.to_categorical(train_idx, num_classes[0])
 
     tr_samples = []
     for idx in range(len(train)):
         tr_samples.append([train[idx], train_idx[idx]])
 
-    epochs = 100
+    mask = load_mask()
+
+    epochs = 30
     mode = "conc"
     container = VarsContainer()
 
@@ -463,20 +489,23 @@ def ocean_only():
     config.gpu_options.visible_device_list = "1"
     set_session(tf.Session(config=config))
 
-    # model = init_advanced_ocean_model(11)
-    model = VGG(num_classes[2])
+    model = VGG(num_classes[0])
     history = AccuracyHistory()
-    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode),
+    model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode, mask),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
-    # model.save("samples/sat_with_square_sizes/100/" + mode + month + "_model.h5")
-    save(model, "samples/sat_with_square_sizes/25/" + mode + month + "_model.h5")
-    model = VGG(num_classes[2])
+
+    save(model, "samples/sat_csvs/" + mode + month + "_model.h5")
+    model = VGG(num_classes[0])
     count_predictions(model, month)
 
 
-# ocean_only()
+ocean_only()
+
+# model = VGG(num_classes[0])
+# count_predictions(model, "08")
+
 # model = VGG(num_classes[0])
 # count_predictions(model, "09")
-ocean_with_mlp()
+# ocean_with_mlp()

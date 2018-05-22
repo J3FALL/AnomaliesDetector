@@ -20,7 +20,6 @@ from sklearn import tree
 from sklearn.externals import joblib
 from sklearn.metrics import roc_curve, auc
 from keras import backend as K
-from scipy import ndimage
 from keras.backend.tensorflow_backend import set_session
 
 from keras.layers import Dense, Flatten, Dropout
@@ -129,22 +128,27 @@ class IceDetector:
         self.alpha = alpha
 
         self.model = VGG(20)
-        self.model.load_weights("samples/sat_with_square_sizes/100/conc09_model.h5")
-        # self.model = load_model("samples/sat_csvs/conc" + month + "_model.h5")
+        self.model.load_weights("samples/sat_csvs/conc" + month + "_model.h5")
 
         # ocean squares
         self.squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
         # similar squares for september
         d = load_zones(month)
         self.similar = d
+        print(self.similar)
 
     def detect(self, file_name):
         nc = NCFile(file_name)
-        conc = nc.variables['iceconc'][:][0]
+        if "sat" in file_name or "SAT" in file_name:
+            conc = nc.variables['ice_conc'][:].filled(0) / 100.0
+            conc = conc[0]
+        elif "ease2" in file_name:
+            conc = nc.variables['ice_conc'][:][0]
+        else:
+            conc = nc.variables['iceconc'][:][0]
+            # conc = ndimage.uniform_filter(conc, 10)
 
         nc.close()
-
-        conc = ndimage.uniform_filter(conc, 10)
 
         square = 0
         good_amount = 0
@@ -229,15 +233,25 @@ def construct_ice_sat_dataset(month, dir):
     squares = []
     for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
         square = 0
+        year = int(nc_file.split("/")[2])
         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
                 if is_inside(x, y):
+                    # if not (month == "09" and year < 1997):
                     dataset.samples.append(IceSample(nc_file, square, SQUARE_SIZE, 0, 0, x, y))
                     if square not in squares:
                         squares.append(square)
                     square += 1
-    print(squares)
-    print(len(squares))
+
+    # if month == "09":
+    #     nemo_dir = "samples/NEMO_good_for_September/"
+    #     for nc_file in glob.iglob(nemo_dir + "**/*.nc", recursive=True):
+    #         square = 0
+    #         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+    #             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+    #                 if is_inside(x, y):
+    #                     dataset.samples.append(IceSample(nc_file, square, SQUARE_SIZE, 0, 0, x, y))
+    #                     square += 1
     dataset.dump_to_csv()
 
 
@@ -454,16 +468,18 @@ def draw_ice_ocean_only(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
-    month = select_month(file_name)
+    month = "02"
+    # month = select_month(file_name)
+
     print("month: ", month)
     if "sat" in file_name:
         conc = nc.variables['ice_conc'][:].filled(0) / 100.0
         conc = conc[0]
-
         thic = np.empty((1, 400, 100), np.float32)
+    elif "ease2" in file_name:
+        conc = nc.variables['ice_conc'][:][0]
     else:
         conc = nc.variables['iceconc'][:][0]
-        conc = ndimage.uniform_filter(conc, 10)
         thic = nc.variables['icethic_cea'][:][0]
 
     nc.close()
@@ -479,16 +495,16 @@ def draw_ice_ocean_only(file_name):
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
     m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
-    m.drawcoastlines()
-    m.drawcountries()
-    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+    # m.drawcoastlines()
+    # m.drawcountries()
+    # m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
     config = tf.ConfigProto()
     config.gpu_options.visible_device_list = "1"
     K.set_session(tf.Session(config=config))
 
-    model = MLP(320)
-    model.load_weights("samples/sat_with_square_sizes/25/conc09_mlp_model.h5")
+    model = VGG(20)
+    model.load_weights("samples/sat_csvs/conc" + month + "_model.h5")
 
     # model.load_weights("samples/sat_with_square_sizes/50/conc08_model.h5")
     # squares = [1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18, 24, 25, 26, 27, 28, 29]
@@ -502,8 +518,6 @@ def draw_ice_ocean_only(file_name):
             if is_inside(x, y):
                 sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
 
-                # thic_square = thic[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
-
                 combined = np.stack(
                     arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
                     axis=2)
@@ -511,17 +525,17 @@ def draw_ice_ocean_only(file_name):
                 result = model.predict(sample)
                 predicted_index = np.argmax(result[0])
 
-                y_offset = int(SQUARE_SIZE / 2)
-                x_offset = int(SQUARE_SIZE / 2)
+                y_offset = int(SQUARE_SIZE / 4)
+                x_offset = int(SQUARE_SIZE / 4)
                 result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
-                plt.text(result_x, result_y, str(predicted_index), ha='center', size=1, color="yellow",
+                plt.text(result_x, result_y, str(predicted_index), ha='center', size=3, color="yellow",
                          path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
-                # result_x, result_y = m(lon[y + 2 * y_offset][x + x_offset], lat[y + 2 * y_offset][x + x_offset])
-                # plt.text(result_x, result_y, str(square), ha='center', size=5, color="yellow",
-                #          path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
-                # result_x, result_y = m(lon[y + 3 * y_offset][x + x_offset], lat[y + 3 * y_offset][x + x_offset])
-                # plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=5,
-                #          color="yellow", path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 2 * y_offset][x + x_offset], lat[y + 2 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(square), ha='center', size=5, color="yellow",
+                         path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
+                result_x, result_y = m(lon[y + 3 * y_offset][x + x_offset], lat[y + 3 * y_offset][x + x_offset])
+                plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=5,
+                         color="yellow", path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
 
                 lat_poly = np.array(
                     [lat[y][x], lat[y][x + SQUARE_SIZE - 1], lat[y + SQUARE_SIZE - 1][x + SQUARE_SIZE - 1],
@@ -560,7 +574,7 @@ def draw_ice_ocean_only(file_name):
     # yellow = mpatches.Patch(color='yellow', label='Rather correct')
     # green = mpatches.Patch(color='green', label='Correct')
     # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
-    plt.savefig(file_name + "_results_SIZE_25_mlp.png", dpi=500)
+    plt.savefig(file_name + "_ON_FEB.png", dpi=500)
 
     K.clear_session()
 
@@ -878,7 +892,7 @@ def test_detector():
     samples = []
 
     # label good data
-    for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
+    for file_name in glob.iglob(good_dir + "**/*.nc", recursiv=True):
         samples.append([os.path.normpath(file_name), 1])
 
     print(len(samples))
@@ -1232,38 +1246,56 @@ def fit_tree():
     joblib.dump(clf, 'samples/tree.pkl')
 
 
+def reduce_conc(conc):
+    conc[conc < 0.4] = 0.0
+
+    return conc
+
+
+def load_mask():
+    mask_file = NCFile("bathy_meter_mask.nc")
+    mask = mask_file.variables['Bathymetry'][:]
+    mask_file.close()
+
+    mask = 1 - mask
+
+    return mask
+
+
 def count_predictions(model, month):
     data_dir = "samples/conc_satellite/"
-
-    # squares = [1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 17, 18, 24, 25, 26, 27, 28, 29]
 
     config = tf.ConfigProto()
     config.gpu_options.visible_device_list = "1"
     set_session(tf.Session(config=config))
 
-    model.load_weights("samples/sat_with_square_sizes/25/conc" + month + "_mlp_model.h5")
-    # model = load_model("samples/sat_with_square_sizes/100/conc" + month + "_model.h5")
+    model.load_weights("samples/sat_csvs/conc" + month + "_model.h5")
 
     count = dict()
+    mask = load_mask()
 
     for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
         nc = NCFile(nc_file)
         conc = nc.variables['ice_conc'][:].filled(0) / 100.0
         conc = conc[0]
+        conc = reduce_conc(conc)
         nc.close()
         square = 0
         print(nc_file)
         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
                 if is_inside(x, y):
+                    conc_square = conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+                    if square in [15, 16, 17, 18]:
+                        conc_square = conc_square * mask[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]
+                        # conc_square = np.full((100, 100), fill_value=0.0)
                     sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
                     combined = np.stack(
-                        arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
+                        arrays=[conc_square],
                         axis=2)
                     sample[0] = combined
                     result = model.predict(sample)
                     predicted_index = np.argmax(result[0])
-                    # print(real_idx, predicted_index, result[0][predicted_index], squares.index(real_idx))
                     if square not in count.keys():
                         count[square] = dict()
                         count[square][predicted_index] = 1
@@ -1273,6 +1305,34 @@ def count_predictions(model, month):
                         else:
                             count[square][predicted_index] += 1
                     square += 1
+    # if month == "09":
+    #     nemo_dir = "samples/NEMO_good_for_September/"
+    #     for nc_file in glob.iglob(nemo_dir + "**/*.nc", recursive=True):
+    #         nc = NCFile(nc_file)
+    #         conc = nc.variables['iceconc'][:][0]
+    #         nc.close()
+    #         square = 0
+    #         print(nc_file)
+    #         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
+    #             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
+    #                 if is_inside(x, y):
+    #                     sample = np.zeros((1, SQUARE_SIZE, SQUARE_SIZE, 1))
+    #                     combined = np.stack(
+    #                         arrays=[conc[y:y + SQUARE_SIZE, x:x + SQUARE_SIZE]],
+    #                         axis=2)
+    #                     sample[0] = combined
+    #                     result = model.predict(sample)
+    #                     predicted_index = np.argmax(result[0])
+    #                     if square not in count.keys():
+    #                         count[square] = dict()
+    #                         count[square][predicted_index] = 1
+    #                     else:
+    #                         if predicted_index not in count[square].keys():
+    #                             count[square][predicted_index] = 1
+    #                         else:
+    #                             count[square][predicted_index] += 1
+    #                     square += 1
+
     filtered = count.copy()
     for key in filtered.keys():
         filtered[key] = []
@@ -1292,12 +1352,11 @@ def count_predictions(model, month):
             filtered[key].append(key)
 
     # save map to file
-    np.save("samples/sat_with_square_sizes/25/zones_" + month + "_mlp.npy", filtered)
+    np.save("samples/sat_csvs/zones_" + month + ".npy", filtered)
 
 
 def load_zones(month):
-    # zones = np.load("samples/sat_csvs/zones_" + month + ".npy").item()
-    zones = np.load("samples/sat_with_square_sizes/100/zones_" + month + ".npy").item()
+    zones = np.load("samples/sat_csvs/zones_" + month + ".npy").item()
     return zones
 
 
@@ -1476,7 +1535,7 @@ def sat_validate(file_name):
 
 
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-# draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130922-20130922.nc_1.nc")
+draw_ice_ocean_only("samples/pathological_cases/noise/ice_conc_nh_ease2-250_cdr-v2p0_201302211200.nc_break.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")
@@ -1504,7 +1563,7 @@ def sat_validate(file_name):
 # show_detection_results("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130907-20130907.nc_1.nc")
 # count_predictions()
 
-test_detector()
+# test_detector()
 
 # vis()
 # test_full_year()
@@ -1518,7 +1577,7 @@ test_detector()
 # compare_nn_and_sat()
 
 # construct_ice_sat_dataset('09', 'samples/sat_with_square_sizes/100/')
-# sat_dataset_full_year("samples/sat_with_square_sizes/25/")
+# sat_dataset_full_year("samples/sat_csvs/")
 
 # zones = load_zones("09")
 # print(zones)
