@@ -18,7 +18,7 @@ from ice_data import IceDetector
 from scipy.ndimage import uniform_filter
 
 month_pair = {
-    "01": "09",
+    "01": ["09"],
     "03": ["09"],
     "06": ["09"],
     "09": ["01", "03", "06"]
@@ -195,7 +195,7 @@ def check_filter():
         plt.savefig("samples/filters/" + str(filter) + ".png", dpi=500)
 
 
-roc_for_month("03")
+roc_for_month("09")
 
 
 # check_filter()

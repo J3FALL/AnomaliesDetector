@@ -91,7 +91,7 @@ def label_bad_samples():
         if not os.path.exists(vel_dir):
             os.makedirs(vel_dir)
 
-        for file_name in os.listdir("samples/arctic"):
+        for file_name in os.listdir("samples/bad"):
             arctic_file = file_name.split(".")[0]
             for x in range(0, 1100, 100):
                 for y in range(0, 400, 100):
@@ -281,3 +281,5 @@ for image_index in range(0, 1):
 
 
 '''
+
+# label_bad_samples()

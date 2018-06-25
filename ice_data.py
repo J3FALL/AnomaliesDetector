@@ -12,7 +12,8 @@ import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
 import numpy as np
 from keras.models import load_model
-from matplotlib.patches import Polygon
+from matplotlib.patches import Polygon, Patch
+
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.basemap import Basemap
 from netCDF4 import Dataset as NCFile
@@ -233,11 +234,9 @@ def construct_ice_sat_dataset(month, dir):
     squares = []
     for nc_file in glob.iglob(data_dir + "*/" + month + "/*.nc", recursive=True):
         square = 0
-        year = int(nc_file.split("/")[2])
         for y in range(0, IMAGE_SIZE['y'], SQUARE_SIZE):
             for x in range(0, IMAGE_SIZE['x'], SQUARE_SIZE):
                 if is_inside(x, y):
-                    # if not (month == "09" and year < 1997):
                     dataset.samples.append(IceSample(nc_file, square, SQUARE_SIZE, 0, 0, x, y))
                     if square not in squares:
                         squares.append(square)
@@ -468,8 +467,8 @@ def draw_ice_ocean_only(file_name):
     nc = NCFile(file_name)
     lat = nc.variables['nav_lat'][:]
     lon = nc.variables['nav_lon'][:]
-    month = "02"
-    # month = select_month(file_name)
+    # month = "02"
+    month = select_month(file_name)
 
     print("month: ", month)
     if "sat" in file_name:
@@ -495,9 +494,9 @@ def draw_ice_ocean_only(file_name):
                 urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
 
     m.pcolormesh(lon, lat, conc, latlon=True, cmap='RdYlBu_r', vmax=1)
-    # m.drawcoastlines()
-    # m.drawcountries()
-    # m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
 
     config = tf.ConfigProto()
     config.gpu_options.visible_device_list = "1"
@@ -526,15 +525,15 @@ def draw_ice_ocean_only(file_name):
                 predicted_index = np.argmax(result[0])
 
                 y_offset = int(SQUARE_SIZE / 4)
-                x_offset = int(SQUARE_SIZE / 4)
+                x_offset = int(SQUARE_SIZE / 2)
                 result_x, result_y = m(lon[y + y_offset][x + x_offset], lat[y + y_offset][x + x_offset])
-                plt.text(result_x, result_y, str(predicted_index), ha='center', size=3, color="yellow",
+                plt.text(result_x, result_y, str(square), ha='center', size=7, color="yellow",
                          path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
                 result_x, result_y = m(lon[y + 2 * y_offset][x + x_offset], lat[y + 2 * y_offset][x + x_offset])
-                plt.text(result_x, result_y, str(square), ha='center', size=5, color="yellow",
+                plt.text(result_x, result_y, str(predicted_index), ha='center', size=7, color="yellow",
                          path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
                 result_x, result_y = m(lon[y + 3 * y_offset][x + x_offset], lat[y + 3 * y_offset][x + x_offset])
-                plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=5,
+                plt.text(result_x, result_y, str(round(result[0][predicted_index], 3)), ha='center', size=7,
                          color="yellow", path_effects=[PathEffects.withStroke(linewidth=3, foreground='black')])
 
                 lat_poly = np.array(
@@ -551,8 +550,14 @@ def draw_ice_ocean_only(file_name):
 
                 # check zones
                 if predicted_index not in similar[square]:
-                    poly = Polygon(points, color='red', fill=False, linewidth=3)
-                    plt.gca().add_patch(poly)
+                    # poly = Polygon(points, color='red', fill=False, linewidth=3)
+                    # plt.gca().add_patch(poly)
+                    if y >= 200:
+                        poly = Polygon(points, color='yellow', fill=False, linewidth=3)
+                        plt.gca().add_patch(poly)
+                    else:
+                        poly = Polygon(points, color='red', fill=False, linewidth=3)
+                        plt.gca().add_patch(poly)
                 else:
                     if predicted_index == square:
                         poly = Polygon(points, color='green', fill=False, linewidth=3)
@@ -570,11 +575,12 @@ def draw_ice_ocean_only(file_name):
     plt.colorbar(cax=cax, label="Ice concentration")
     # plt.title("Outlier detection results for : ARCTIC_1h_ice_grid_TUV_20130912-20130912.nc_1.nc", fontsize=10, loc='left')
 
-    # red = mpatches.Patch(color='red', label='Outlier')
-    # yellow = mpatches.Patch(color='yellow', label='Rather correct')
-    # green = mpatches.Patch(color='green', label='Correct')
-    # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
-    plt.savefig(file_name + "_ON_FEB.png", dpi=500)
+    red = Patch(color='red', label='Anomaly')
+    yellow = Patch(color='yellow', label='Rather correct')
+    green = Patch(color='green', label='Correct')
+    plt.legend(loc='lower right', fontsize='medium', bbox_to_anchor=(1, 1), handles=[green, yellow, red])
+    #plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
+    plt.savefig(file_name + "_bad_result.png", dpi=500)
 
     K.clear_session()
 
@@ -892,7 +898,7 @@ def test_detector():
     samples = []
 
     # label good data
-    for file_name in glob.iglob(good_dir + "**/*.nc", recursiv=True):
+    for file_name in glob.iglob(good_dir + "**/*.nc", recursive=True):
         samples.append([os.path.normpath(file_name), 1])
 
     print(len(samples))
@@ -956,7 +962,7 @@ def test_detector():
     plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
 
     # plt.show()
-    plt.savefig("roc_size_25.png", dpi=500)
+    plt.savefig("test_test.png", dpi=500)
     K.clear_session()
 
 
@@ -1535,7 +1541,7 @@ def sat_validate(file_name):
 
 
 # draw_ice_levels("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130925-20130925.nc_1.nc")
-draw_ice_ocean_only("samples/pathological_cases/noise/ice_conc_nh_ease2-250_cdr-v2p0_201302211200.nc_break.nc")
+draw_ice_ocean_only("samples/ice_tests/good/2013/ARCTIC_1h_ice_grid_TUV_20130928-20130928.nc_1.nc")
 # construct_ice_dataset()
 
 # draw_ice_data("samples/ice_data/bad/ARCTIC_1h_ice_grid_TUV_20130902-20130902.nc")

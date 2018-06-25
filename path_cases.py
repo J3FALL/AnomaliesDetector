@@ -243,13 +243,50 @@ def plot_full_ice():
     ax.set_xticklabels(labels)
 
     plt.xlabel('Month')
-    plt.ylabel('Squares recognized as correct, %')
+    plt.ylabel('Sub-areas recognized as correct, %')
     plt.title('Prediction results for full ice case')
     legend = plt.legend(['conc = 0.0', 'conc = 0.2', 'conc = 0.5', 'conc = 0.8', 'conc = 1.0'],
                         bbox_to_anchor=(1.05, 1), loc=2,
                         borderaxespad=0.)
     plt.savefig("samples/pathological_cases/full_ice_results.png", bbox_extra_artists=(legend,), bbox_inches='tight',
                 dpi=500)
+
+
+def plot_path_cases():
+    plt.rcParams.update({'font.size': 22})
+    fig = plt.figure(figsize=(20, 10))
+    ax = fig.add_subplot(111)
+
+    months = [i for i in range(1, 13)]
+    noise = detect_noise()
+    plt.plot(months, noise, marker='o', c="c", label='Noise')
+
+    holes50 = detect_holes(50)
+    plt.plot(months, holes50, marker='o', c="g", label='Holes with amount = 50')
+
+    holes100 = detect_holes(100)
+    plt.plot(months, holes100, marker='o', c="r", label='Holes with amount = 100')
+
+    holes100 = detect_holes(200)
+    plt.plot(months, holes100, marker='o', c="b", label='Holes with amount = 200')
+
+    spots = detect_spots()
+    plt.plot(months, spots, marker='o', c="y", label='Spots')
+
+    labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    ax.set_xticks(months)
+    ax.set_xticklabels(labels)
+
+    plt.xlabel('Month')
+    plt.ylabel('Sub-areas recognized as correct, %')
+    plt.title('Prediction results for pathological cases')
+    plt.legend(loc='lower right', fontsize='medium')
+    # legend = plt.legend(['holes amount = 50', 'holes amount = 100', 'holes amount = 200'],
+    #                     bbox_to_anchor=(1.05, 1), loc=2,
+    #                     borderaxespad=0.)
+
+    plt.savefig("samples/pathological_cases/path_results.png", dpi=500)
 
 
 # plot_full_ice()
@@ -260,5 +297,8 @@ def plot_full_ice():
 # plot_holes()
 # generate_spots()
 # plot_spots()
-generate_noise()
-plot_noise()
+# generate_noise()
+# plot_noise()
+# plot_path_cases()
+plot_full_ice()
+

@@ -32,14 +32,14 @@ def read_samples(file_name):
 
 
 def train_data():
-    bad_samples_file = "samples/bad_samples.csv"
+    bad_samples_file = "samples/current_model/train_samples.csv"
     bad_samples = read_samples(bad_samples_file)
 
     return bad_samples
 
 
 def test_data():
-    valid_samples_file = "samples/valid_samples.csv"
+    valid_samples_file = "samples/current_model/test_samples.csv"
     samples = read_samples(valid_samples_file)
 
     return samples
@@ -98,26 +98,21 @@ def generate_results(y_test, y_score):
     fpr, tpr, _ = roc_curve(y_test, y_score)
     roc_auc = auc(fpr, tpr)
 
-    # plt.figure()
-    # plt.plot(fpr, tpr)
-    # plt.plot([0, 1], [0, 1], 'k--')
-    # plt.xlim([0.0, 1.05])
-    # plt.ylim([0.0, 1.05])
-    # plt.xlabel('False Positive Rate')
-    # plt.ylabel('True Positive Rate')
-    # plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+    plt.figure()
+    plt.plot(fpr, tpr)
+    plt.plot([0, 1], [0, 1], 'k--', label='test')
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Classification results on train set, AUC = (%0.2f)' % roc_auc)
     print('AUC: %f' % roc_auc)
 
-    # plt.show()
+    plt.show()
 
     pr, rc, _ = precision_recall_curve(y_test, y_score)
     pr_auc = auc(rc, pr)
-    # plt.plot(pr, rc)
-    # plt.xlim([0.0, 1.05])
-    # plt.ylim([0.0, 1.05])
-    # plt.title('Precision-Recall curve with AUC(%0.2f)' % pr_auc)
-    # plt.xlabel('Precision')
-    # plt.ylabel('Recall')
+
     print('AUC: %f' % pr_auc)
 
     # plt.show()
@@ -216,7 +211,7 @@ def run_default_model():
                         callbacks=[history],
                         epochs=3)
 
-    model.save("samples/model.h5")
+    model.save("samples/current_model/model.h5")
 
     # model = load_model("samples/model.h5")
     scores = model.predict_generator(data_generator(test, test_batch_size), steps=25)
