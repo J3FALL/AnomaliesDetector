@@ -28,7 +28,7 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2
 from keras.models import Sequential
 import tensorflow as tf
 
-SQUARE_SIZE = 100
+SQUARE_SIZE = 150
 IMAGE_SIZE = {
     'x': 1100,
     'y': 400
@@ -128,8 +128,8 @@ class IceDetector:
     def __init__(self, alpha, month):
         self.alpha = alpha
 
-        self.model = VGG(20)
-        self.model.load_weights("samples/sat_csvs/conc" + month + "_model.h5")
+        self.model = VGG(10)
+        self.model.load_weights("samples/sat_with_square_sizes/150/conc" + month + "_model.h5")
 
         # ocean squares
         self.squares = [*list(range(1, 8)), *list(range(12, 19)), *list(range(24, 30))]
@@ -579,7 +579,7 @@ def draw_ice_ocean_only(file_name):
     yellow = Patch(color='yellow', label='Rather correct')
     green = Patch(color='green', label='Correct')
     plt.legend(loc='lower right', fontsize='medium', bbox_to_anchor=(1, 1), handles=[green, yellow, red])
-    #plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
+    # plt.legend(loc='lower right', fontsize='medium', handles=[green, yellow, red])
     plt.savefig(file_name + "_bad_result.png", dpi=500)
 
     K.clear_session()
@@ -962,7 +962,7 @@ def test_detector():
     plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
 
     # plt.show()
-    plt.savefig("test_test.png", dpi=500)
+    plt.savefig("test_150.png", dpi=500)
     K.clear_session()
 
 
@@ -1275,7 +1275,7 @@ def count_predictions(model, month):
     config.gpu_options.visible_device_list = "1"
     set_session(tf.Session(config=config))
 
-    model.load_weights("samples/sat_csvs/conc" + month + "_model.h5")
+    model.load_weights("samples/sat_with_square_sizes/150/conc" + month + "_model.h5")
 
     count = dict()
     mask = load_mask()
@@ -1358,11 +1358,11 @@ def count_predictions(model, month):
             filtered[key].append(key)
 
     # save map to file
-    np.save("samples/sat_csvs/zones_" + month + ".npy", filtered)
+    np.save("samples/sat_with_square_sizes/150/zones_" + month + ".npy", filtered)
 
 
 def load_zones(month):
-    zones = np.load("samples/sat_csvs/zones_" + month + ".npy").item()
+    zones = np.load("samples/sat_with_square_sizes/150/zones_" + month + ".npy").item()
     return zones
 
 
@@ -1582,8 +1582,11 @@ def sat_validate(file_name):
 
 # compare_nn_and_sat()
 
-# construct_ice_sat_dataset('09', 'samples/sat_with_square_sizes/100/')
 # sat_dataset_full_year("samples/sat_csvs/")
+## construct_ice_sat_dataset('09', 'samples/sat_with_square_sizes/100/')
+# sat_dataset_full_year("samples/sat_with_square_sizes/150/")
 
 # zones = load_zones("09")
 # print(zones)
+
+test_detector()

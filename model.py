@@ -226,4 +226,11 @@ def run_default_model():
 
 
 # run_metrics_experiment()
-run_default_model()
+# run_default_model()
+# import pydot
+# print (pydot.find_graphviz())
+
+from keras.utils import plot_model
+
+model = init_model()
+plot_model(model, to_file='model_arch.png', show_shapes=True)

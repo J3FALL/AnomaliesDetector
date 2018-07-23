@@ -255,7 +255,7 @@ def ocean_data_generator(samples, batch_size, vars_container, mode, mask):
     while 1:
         for sample_index in range(0, len(samples), batch_size):
             x = np.zeros((batch_size, SQUARE_SIZE, SQUARE_SIZE, 1), dtype=np.float32)
-            y = np.zeros((batch_size, num_classes[0]))
+            y = np.zeros((batch_size, 10))
 
             if sample_index + batch_size > len(samples):
                 offset = len(samples) - sample_index
@@ -464,8 +464,8 @@ def load_mask():
 
 
 def ocean_only():
-    month = "04"
-    data = read_samples("samples/sat_csvs/sat_" + month + ".csv")
+    month = "09"
+    data = read_samples("samples/sat_with_square_sizes/150/sat_" + month + ".csv")
     train, test = split_data(data.samples, 0.0)
     print(len(train))
     print(len(test))
@@ -473,7 +473,8 @@ def ocean_only():
     train_idx = []
     for sample in train:
         train_idx.append(sample.index)
-    train_idx = keras.utils.to_categorical(train_idx, num_classes[0])
+    classes = 10
+    train_idx = keras.utils.to_categorical(train_idx, classes)
 
     tr_samples = []
     for idx in range(len(train)):
@@ -481,7 +482,7 @@ def ocean_only():
 
     mask = load_mask()
 
-    epochs = 30
+    epochs = 15
     mode = "conc"
     container = VarsContainer()
 
@@ -489,15 +490,15 @@ def ocean_only():
     config.gpu_options.visible_device_list = "1"
     set_session(tf.Session(config=config))
 
-    model = VGG(num_classes[0])
+    model = VGG(classes)
     history = AccuracyHistory()
     model.fit_generator(ocean_data_generator(tr_samples, train_batch_size, container, mode, mask),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
                         epochs=epochs)
 
-    save(model, "samples/sat_csvs/" + mode + month + "_model.h5")
-    model = VGG(num_classes[0])
+    save(model, "samples/sat_with_square_sizes/150/" + mode + month + "_model.h5")
+    model = VGG(classes)
     count_predictions(model, month)
 
 
@@ -509,3 +510,9 @@ ocean_only()
 # model = VGG(num_classes[0])
 # count_predictions(model, "09")
 # ocean_with_mlp()
+
+#
+# from keras.utils import plot_model
+#
+# model = VGG(20)
+# plot_model(model, to_file='VGG_arch.png', show_shapes=True)

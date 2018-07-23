@@ -1,6 +1,11 @@
 import csv
 import os
 
+import matplotlib
+
+# matplotlib.use('TkAgg')
+
+import matplotlib.animation as animation
 import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
 import numpy as np
@@ -45,7 +50,8 @@ def draw():
     cax = divider.append_axes("right", size="5%", pad=0.05)
 
     plt.colorbar(cax=cax, label="Ice concentration")
-    plt.savefig("bad_ice_08_27.png", dpi=500)
+    plt.show()
+    # plt.savefig("bad_ice_08_27.png", dpi=500)
 
 
 def draw_map(nc_file_name):
@@ -95,35 +101,36 @@ def draw_map(nc_file_name):
     # cax = divider.append_axes("right", size="5%", pad=0.05)
 
     # plt.colorbar().set_label(label='Sea current velocity', size=15)
-    with open("samples/valid_samples.csv", 'r', newline='') as csvfile:
-        samples = []
+    # with open("samples/valid_samples.csv", 'r', newline='') as csvfile:
+    #     samples = []
+    #
+    #     reader = csv.reader(csvfile, delimiter=',')
+    #     for row in reader:
+    #         if "samples/bad/vel/" + nc_name in row[0]:
+    #             print(row)
+    #             samples.append(row)
+    #             square_index = data.extract_square_index(row[0])
+    #
+    #             x = int(square_index.split("_")[0])
+    #             y = int(square_index.split("_")[1])
+    #
+    #             if (x >= 100) and (x < 1000) and (y < 300):
+    #
+    #                 sample = np.zeros((1, 100, 100, 1), dtype=np.float32)
+    #                 square = np.expand_dims(img.load_square_from_file(row[0]), axis=2)
+    #                 sample[0] = square
+    #                 lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
+    #                 lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
+    #                 mapx, mapy = m(lon_poly, lat_poly)
+    #                 points = np.zeros((4, 2), dtype=np.float32)
+    #                 for j in range(0, 4):
+    #                     points[j][0] = mapx[j]
+    #                     points[j][1] = mapy[j]
+    #                 poly = Polygon(points, color='black', fill=False, linewidth=3)
+    #                 ax.add_patch(poly)
 
-        reader = csv.reader(csvfile, delimiter=',')
-        for row in reader:
-            if "samples/bad/vel/" + nc_name in row[0]:
-                print(row)
-                samples.append(row)
-                square_index = data.extract_square_index(row[0])
-
-                x = int(square_index.split("_")[0])
-                y = int(square_index.split("_")[1])
-
-                if (x >= 100) and (x < 1000) and (y < 300):
-
-                    sample = np.zeros((1, 100, 100, 1), dtype=np.float32)
-                    square = np.expand_dims(img.load_square_from_file(row[0]), axis=2)
-                    sample[0] = square
-                    lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
-                    lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
-                    mapx, mapy = m(lon_poly, lat_poly)
-                    points = np.zeros((4, 2), dtype=np.float32)
-                    for j in range(0, 4):
-                        points[j][0] = mapx[j]
-                        points[j][1] = mapy[j]
-                    poly = Polygon(points, color='black', fill=False, linewidth=3)
-                    ax.add_patch(poly)
-
-    plt.savefig("levels" + "_!!!.png", dpi=500)
+    # plt.savefig("levels" + "_!!!.png", dpi=500)
+    plt.show()
 
 
 def draw_velocity_map(nc_file_name):
@@ -291,8 +298,113 @@ def draw_velocity_map_with_level(nc_file_name, level):
     plt.show()
 
 
-# draw_velocity_map_with_level("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc", 15)
-draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")
-# draw_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130204-20130204.nc")
+def init_velocity_field(nc_file_name):
+    nc = NetCDFFile(nc_file_name, 'r+')
+    lat = nc.variables['nav_lat_grid_U'][:]
+    lon = nc.variables['nav_lon_grid_U'][:]
+    nc_name = nc_file_name.split("/")[4].split(".")[0]
+    velocity = np.zeros((400, 1100), dtype=np.float32)
+    vel_dir = "samples/bad/vel/"
+    for file_name in os.listdir(vel_dir):
+        if nc_name in file_name:
+            square = img.load_square_from_file(vel_dir + file_name.split(".")[0])
+            square_index = data.extract_square_index(vel_dir + file_name.split(".")[0])
+            x = int(square_index.split("_")[0])
+            y = int(square_index.split("_")[1])
+            velocity[y:y + 100, x:x + 100] = square
 
+    nc.close()
+    lat_left_bottom = lat[-1][-1]
+    lon_left_bottom = lon[-1][-1]
+    lat_right_top = lat[0][0]
+    lon_right_top = lon[0][0]
+
+    lat_center = 90
+    # 110, 119
+    lon_center = 110
+    m = Basemap(projection='stere', lon_0=lon_center, lat_0=lat_center, resolution='l',
+                llcrnrlat=lat_left_bottom, llcrnrlon=lon_left_bottom,
+                urcrnrlat=lat_right_top, urcrnrlon=lon_right_top)
+
+    m.pcolormesh(lon, lat, velocity, latlon=True, cmap='RdYlBu_r', vmax=0.6)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.fillcontinents(color='#cc9966', lake_color='#99ffff')
+
+    ax = plt.gca()
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(cax=cax, label="Sea current velocity")
+
+    return ax, lat, lon, m
+
+
+class CoordsIterator:
+    def __init__(self):
+        self.coords = coords()
+        self._idx = -1
+
+    def next(self):
+        self._idx += 1
+        if self._idx < len(self.coords):
+            return self.coords[self._idx], self._idx
+        else:
+            return -1, -1
+
+
+def coords():
+    c = []
+    idx = 0
+    for y in range(0, 400, 100):
+        for x in range(0, 1100, 100):
+            if (x >= 100) and (x < 1000) and (y < 300):
+                c.append((x, y))
+                idx += 1
+
+    return c
+
+
+def label_square(i, it, ax, lat, lon, m):
+    coord, idx = it.next()
+    if coord != -1:
+        x, y = coord
+        lat_poly = np.array([lat[y][x], lat[y][x + 99], lat[y + 99][x + 99], lat[y + 99][x]])
+        lon_poly = np.array([lon[y][x], lon[y][x + 99], lon[y + 99][x + 99], lon[y + 99][x]])
+        mapx, mapy = m(lon_poly, lat_poly)
+        points = np.zeros((4, 2), dtype=np.float32)
+        for j in range(0, 4):
+            points[j][0] = mapx[j]
+            points[j][1] = mapy[j]
+        if idx in [0, 1, 3, 4, 5, 6, 7]:
+            poly = Polygon(points, color='red', fill=False, linewidth=3)
+            ax.add_patch(poly)
+        else:
+            poly = Polygon(points, color='black', fill=False, linewidth=3)
+            ax.add_patch(poly)
+
+        return ax,
+
+
+def labeling_anim(nc_file_name):
+    ax, lat, lon, m = init_velocity_field(nc_file_name)
+    it = CoordsIterator()
+    ani = animation.FuncAnimation(ax.figure, label_square, fargs=(it, ax, lat, lon, m,),
+                                  frames=44, interval=100, repeat=True)
+    save_anim_as_gif('Labeling.gif', ani)
+
+    # plt.show()
+
+
+def save_anim_as_gif(name, anim,
+                     path_to_imagemagick='C:\Program Files\ImageMagick-7.0.8-Q16\magick.exe'):
+    matplotlib.rcParams['animation.convert_path'] = path_to_imagemagick
+    anim.save(name, writer='imagemagick', fps=5)
+
+
+
+
+# draw_velocity_map_with_level("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc", 15)
+# draw_velocity_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130320-20130320.nc")
+draw_map("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130119-20130119.nc")
+# labeling_anim("samples/valid!/samples/arctic/ARCTIC_1h_UV_grid_UV_20130204-20130204.nc")
 # draw()
