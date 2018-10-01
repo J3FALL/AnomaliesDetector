@@ -7,7 +7,6 @@ from keras import backend as K
 from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Flatten, Dropout
 from keras.models import Sequential
-from keras.models import load_model
 from sklearn.metrics import roc_curve, precision_recall_curve, auc
 from sklearn.model_selection import train_test_split
 
@@ -33,14 +32,14 @@ def read_samples(file_name):
 
 
 def train_data():
-    bad_samples_file = "samples/bad_samples.csv"
+    bad_samples_file = "samples/current_model/train_samples.csv"
     bad_samples = read_samples(bad_samples_file)
 
     return bad_samples
 
 
 def test_data():
-    valid_samples_file = "samples/valid_samples.csv"
+    valid_samples_file = "samples/current_model/test_samples.csv"
     samples = read_samples(valid_samples_file)
 
     return samples
@@ -99,26 +98,21 @@ def generate_results(y_test, y_score):
     fpr, tpr, _ = roc_curve(y_test, y_score)
     roc_auc = auc(fpr, tpr)
 
-    # plt.figure()
-    # plt.plot(fpr, tpr)
-    # plt.plot([0, 1], [0, 1], 'k--')
-    # plt.xlim([0.0, 1.05])
-    # plt.ylim([0.0, 1.05])
-    # plt.xlabel('False Positive Rate')
-    # plt.ylabel('True Positive Rate')
-    # plt.title('ROC curve with AUC(%0.2f)' % roc_auc)
+    plt.figure()
+    plt.plot(fpr, tpr)
+    plt.plot([0, 1], [0, 1], 'k--', label='test')
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Classification results on train set, AUC = (%0.2f)' % roc_auc)
     print('AUC: %f' % roc_auc)
 
-    # plt.show()
+    plt.show()
 
     pr, rc, _ = precision_recall_curve(y_test, y_score)
     pr_auc = auc(rc, pr)
-    # plt.plot(pr, rc)
-    # plt.xlim([0.0, 1.05])
-    # plt.ylim([0.0, 1.05])
-    # plt.title('Precision-Recall curve with AUC(%0.2f)' % pr_auc)
-    # plt.xlabel('Precision')
-    # plt.ylabel('Recall')
+
     print('AUC: %f' % pr_auc)
 
     # plt.show()
@@ -167,7 +161,8 @@ def run_metrics_experiment():
                                 epochs=epochs)
 
             # model = load_model("samples/model.h5")
-            scores = model.predict_generator(data_generator(test, test_batch_size), steps=int(len(test) / test_batch_size))
+            scores = model.predict_generator(data_generator(test, test_batch_size),
+                                             steps=int(len(test) / test_batch_size))
             print(scores)
             real = np.zeros((len(test),), dtype=np.float32)
             for i in range(0, len(test)):
@@ -204,6 +199,9 @@ def run_default_model():
     history = AccuracyHistory()
     train_batch_size = int(len(train) / 50)
     test_batch_size = int(len(test) / 25)
+
+    print(train_batch_size)
+    print(test_batch_size)
     epochs = 10
 
     model = init_model()
@@ -211,9 +209,9 @@ def run_default_model():
     model.fit_generator(data_generator(train, train_batch_size),
                         steps_per_epoch=train_batch_size,
                         callbacks=[history],
-                        epochs=10)
+                        epochs=3)
 
-    model.save("samples/model.h5")
+    model.save("samples/current_model/model.h5")
 
     # model = load_model("samples/model.h5")
     scores = model.predict_generator(data_generator(test, test_batch_size), steps=25)
@@ -227,4 +225,12 @@ def run_default_model():
     generate_results(real, scores)
 
 
-run_metrics_experiment()
+# run_metrics_experiment()
+# run_default_model()
+# import pydot
+# print (pydot.find_graphviz())
+
+from keras.utils import plot_model
+
+model = init_model()
+plot_model(model, to_file='model_arch.png', show_shapes=True)
